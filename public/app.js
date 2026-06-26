@@ -36,7 +36,6 @@ let activeTab = "today";
 
 const matchGrid = document.querySelector("#matchGrid");
 const loadingState = document.querySelector("#loadingState");
-const sourceMode = document.querySelector("#sourceMode");
 const activeTabTitle = document.querySelector("#activeTabTitle");
 const activeTabHint = document.querySelector("#activeTabHint");
 const refreshButton = document.querySelector("#refreshButton");
@@ -242,7 +241,6 @@ async function loadPredictions() {
     if (!response.ok) throw new Error(`API failed: ${response.status}`);
     const data = await response.json();
     predictions = data.matches;
-    sourceMode.textContent = data.sourceMode === "mock" ? "Mock Data" : data.sourceMode;
     renderMatches();
   } catch (error) {
     loadingState.textContent = "目前無法載入 API 資料，請確認本機 server 是否啟動。";
