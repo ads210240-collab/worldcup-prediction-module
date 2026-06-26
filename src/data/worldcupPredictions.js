@@ -467,6 +467,315 @@ const mockNewsByMatchId = {
   },
 };
 
+const verifiedTaiwanScheduleMatches = [
+  buildMatch({
+    id: "wc-2026-nor-fra",
+    date: "2026-06-27T02:00:00+08:00",
+    homeTeam: "挪威",
+    awayTeam: "法國",
+    predictedScore: "1-2",
+    scorePredictions: [
+      { score: "1-2", probability: 33, note: "法國整體陣容深度與前場個人能力較完整，挪威仍有定位球與高點威脅。" },
+      { score: "0-2", probability: 22, note: "若法國早段取得領先，挪威被迫壓上後會留下反擊空間。" },
+      { score: "1-1", probability: 19, note: "挪威若能降低節奏並守住禁區，和局路徑仍存在。" },
+    ],
+    categoryTags: ["today", "hot", "highConfidence"],
+    marketView: "市場預期偏向法國不敗，客勝與小讓分討論度較高；挪威進球主要來自反擊與定位球情境。",
+    recentForm: {
+      home: "近 5 場 2 勝 1 和 2 敗，對強隊時防線承壓明顯",
+      away: "近 5 場 3 勝 1 和 1 敗，前場轉換與板凳深度穩定",
+    },
+    goals: { homeFor: 7, homeAgainst: 7, awayFor: 10, awayAgainst: 5 },
+    expectedGoals: { homeXG: 1.18, homeXGA: 1.45, awayXG: 1.82, awayXGA: 0.98 },
+    injuriesSuspensions: {
+      home: "主力陣容大致可用，但防線輪換深度普通",
+      away: "主力框架完整，僅部分替補有出場時間管理",
+    },
+    expertPrediction: "多數賽前看法偏法國小勝，挪威具備進球能力但整體控場較弱。",
+    aiAnalysis: "法國在攻擊選擇、轉換速度與中後場保護都較有優勢；挪威需要把比賽拖入身體對抗與定位球節奏，才有機會提高和局機率。",
+    winProbability: { home: 24, draw: 27, away: 49 },
+    recommendation: "法國勝 / 法國不敗",
+    confidence: "高",
+    riskLevel: "中",
+    scoreBreakdown: { form: 20, attack: 17, defense: 12, odds: 12, squad: 9, headToHead: 3, sentiment: 8 },
+    scoreBreakdownNotes: {
+      form: "法國近期穩定性高於挪威，面對不同節奏都有調整能力。",
+      attack: "法國前場創造力較高，挪威主要依賴高點與反擊。",
+      defense: "法國防守保護較完整，挪威面對速度型攻擊較吃力。",
+      odds: "市場信心偏法國，但客勝仍需留意熱門風險。",
+      squad: "法國陣容深度較好，換人後仍能維持強度。",
+      headToHead: "歷史對戰不是主要決策因素，僅小幅加權。",
+      sentiment: "專家與網路情緒多數偏法國小勝。",
+    },
+    summary:
+      "這場是台灣時間 06/27 凌晨 02:00 的焦點戰之一。法國整體實力、陣容深度與前場轉換速度都優於挪威，模型給出客隊較高勝率。挪威不是沒有機會，尤其在定位球、高點衝擊與禁區二點球上仍有威脅，但若比賽進入開放攻防，法國的速度與板凳深度會更有優勢。市場方向目前偏法國不敗，仍未到極端過熱。保守方向可看法國不敗，較積極者可評估法國小勝。",
+    keyReasons: [
+      "法國攻擊選擇與陣容深度明顯較好。",
+      "挪威有定位球威脅，但防守轉身與橫移是風險。",
+      "市場看法偏法國，與模型方向一致。",
+      "若客勝賠率臨場過熱，可改走法國不敗。",
+    ],
+    sources: ["verified:fixture-search-2026-06-26", "mock:odds-consensus", "mock:expert-sentiment"],
+  }),
+  buildMatch({
+    id: "wc-2026-sen-irq",
+    date: "2026-06-27T02:00:00+08:00",
+    homeTeam: "塞內加爾",
+    awayTeam: "伊拉克",
+    predictedScore: "2-0",
+    scorePredictions: [
+      { score: "2-0", probability: 35, note: "塞內加爾身體對抗與邊路速度較有優勢，零封路徑清楚。" },
+      { score: "1-0", probability: 24, note: "若伊拉克低位防守成功，比賽可能被壓成小比分。" },
+      { score: "2-1", probability: 18, note: "伊拉克若靠定位球得分，仍可能讓總進球上升。" },
+    ],
+    categoryTags: ["today", "highConfidence"],
+    marketView: "市場偏向塞內加爾勝，讓分不宜追太深；小比分主勝討論度較高。",
+    recentForm: {
+      home: "近 5 場 3 勝 1 和 1 敗，防守與身體對抗穩定",
+      away: "近 5 場 1 勝 2 和 2 敗，面對高壓時出球不穩",
+    },
+    goals: { homeFor: 8, homeAgainst: 4, awayFor: 5, awayAgainst: 8 },
+    expectedGoals: { homeXG: 1.7, homeXGA: 0.86, awayXG: 0.92, awayXGA: 1.44 },
+    injuriesSuspensions: {
+      home: "主力框架完整，邊路速度點可用",
+      away: "中場防守輪換較薄，後段體能是疑慮",
+    },
+    expertPrediction: "賽前看法普遍看好塞內加爾控制比賽節奏，伊拉克需要靠定位球製造變數。",
+    aiAnalysis: "塞內加爾在防守穩定度與攻守轉換上都更可靠，伊拉克若無法守住前 30 分鐘，後續會很難抵擋邊路壓力。",
+    winProbability: { home: 56, draw: 25, away: 19 },
+    recommendation: "塞內加爾勝 / 小讓分",
+    confidence: "高",
+    riskLevel: "低",
+    scoreBreakdown: { form: 22, attack: 16, defense: 14, odds: 12, squad: 8, headToHead: 2, sentiment: 8 },
+    scoreBreakdownNotes: {
+      form: "塞內加爾近期攻守平衡較好，伊拉克抗壓較不穩。",
+      attack: "塞內加爾邊路速度與禁區衝擊較具威脅。",
+      defense: "塞內加爾防守結構較完整，失球控制較佳。",
+      odds: "市場偏主隊，讓分仍需控制不要追深。",
+      squad: "塞內加爾主力可用度較高，伊拉克中場輪換較薄。",
+      headToHead: "直接對戰參考有限。",
+      sentiment: "專家預測多數支持塞內加爾小勝。",
+    },
+    summary:
+      "塞內加爾 vs 伊拉克同樣在台灣時間 06/27 凌晨 02:00 開踢。模型明顯偏向塞內加爾，主因是防守穩定、邊路速度與對抗能力都較有優勢。伊拉克若能靠低位防守拖慢節奏，有機會把比分壓低，但長時間承受衝擊會讓體能與中場保護出現問題。這場比較適合主勝或小讓分方向，但不建議追過深讓分，因為小比分主勝仍是高機率劇本。",
+    keyReasons: [
+      "塞內加爾防守穩定分接近滿分。",
+      "伊拉克面對高壓與身體對抗時出球風險偏高。",
+      "市場支持主勝，但讓分不宜過深。",
+      "適合保守主勝或小讓分，不宜追大比分。",
+    ],
+    sources: ["verified:fixture-search-2026-06-26", "mock:team-form", "mock:market-watch"],
+  }),
+  buildMatch({
+    id: "wc-2026-cpv-ksa",
+    date: "2026-06-27T07:00:00+08:00",
+    homeTeam: "維德角",
+    awayTeam: "沙烏地阿拉伯",
+    predictedScore: "1-1",
+    scorePredictions: [
+      { score: "1-1", probability: 30, note: "雙方勝率接近，節奏可能偏保守。" },
+      { score: "1-0", probability: 21, note: "維德角若靠防守反擊先進球，可能守住小勝。" },
+      { score: "0-1", probability: 19, note: "沙烏地若控球效率提升，也有客勝路徑。" },
+    ],
+    categoryTags: ["today", "upsetRisk"],
+    marketView: "市場分歧較明顯，和局與小球關注度高，勝負方向沒有明確共識。",
+    recentForm: {
+      home: "近 5 場 2 勝 2 和 1 敗，防守韌性尚可",
+      away: "近 5 場 2 勝 1 和 2 敗，控球穩但終結效率普通",
+    },
+    goals: { homeFor: 6, homeAgainst: 5, awayFor: 6, awayAgainst: 6 },
+    expectedGoals: { homeXG: 1.08, homeXGA: 1.12, awayXG: 1.05, awayXGA: 1.16 },
+    injuriesSuspensions: {
+      home: "主力陣容大致完整",
+      away: "前場輪換可用，但進攻端效率仍需觀察",
+    },
+    expertPrediction: "多數看法認為本場接近五五波，和局與小球比單邊勝負更合理。",
+    aiAnalysis: "兩隊差距不大，若沒有早段進球，比賽可能進入低節奏拉鋸。模型不建議重押勝負，保守觀望或小球更合適。",
+    winProbability: { home: 34, draw: 33, away: 33 },
+    recommendation: "和局 / 小球",
+    confidence: "中",
+    riskLevel: "高",
+    scoreBreakdown: { form: 17, attack: 12, defense: 12, odds: 8, squad: 7, headToHead: 2, sentiment: 6 },
+    scoreBreakdownNotes: {
+      form: "兩隊近期狀態接近，沒有明顯單邊優勢。",
+      attack: "雙方終結效率都普通，進球上限有限。",
+      defense: "防守都具備韌性，但都不算壓倒性穩定。",
+      odds: "市場分歧，勝負盤不夠乾淨。",
+      squad: "陣容完整度差距不大。",
+      headToHead: "直接對戰樣本有限。",
+      sentiment: "網路情緒偏觀望，和局小球支持較多。",
+    },
+    summary:
+      "維德角 vs 沙烏地阿拉伯在台灣時間 06/27 早上 07:00 開踢。這場模型分數不高，因為兩隊攻擊火力與防守穩定都接近，市場也沒有清楚方向。維德角可依靠防守反擊與身體對抗製造威脅，沙烏地則可能有較多控球時間，但終結效率仍是問題。若早段沒有進球，和局與小球會變得更合理。這場比較適合保守觀望，不宜重倉單邊。",
+    keyReasons: [
+      "雙方勝率接近，沒有明顯強勢方向。",
+      "小球與和局比單邊勝負更符合模型。",
+      "市場分歧代表風險較高。",
+      "適合保守觀望或小注小球。",
+    ],
+    sources: ["verified:fixture-search-2026-06-26", "mock:odds-consensus", "mock:risk-note"],
+  }),
+  buildMatch({
+    id: "wc-2026-uru-esp",
+    date: "2026-06-27T07:00:00+08:00",
+    homeTeam: "烏拉圭",
+    awayTeam: "西班牙",
+    predictedScore: "1-2",
+    scorePredictions: [
+      { score: "1-2", probability: 29, note: "西班牙控球較穩，但烏拉圭對抗與反擊足以進球。" },
+      { score: "1-1", probability: 25, note: "若烏拉圭把節奏拉碎，和局機率會提高。" },
+      { score: "0-1", probability: 18, note: "西班牙若控制風險，可能小勝收場。" },
+    ],
+    categoryTags: ["today", "hot"],
+    marketView: "市場略偏西班牙，但烏拉圭硬度讓勝負盤風險不低；雙方進球討論度高。",
+    recentForm: {
+      home: "近 5 場 3 勝 1 和 1 敗，對抗強度與轉換速度佳",
+      away: "近 5 場 4 勝 1 敗，控球壓制與前場壓迫穩定",
+    },
+    goals: { homeFor: 9, homeAgainst: 6, awayFor: 11, awayAgainst: 4 },
+    expectedGoals: { homeXG: 1.38, homeXGA: 1.08, awayXG: 1.72, awayXGA: 0.88 },
+    injuriesSuspensions: {
+      home: "主力中後場可用，但犯規與牌風險偏高",
+      away: "主力框架完整，邊路輪換深度佳",
+    },
+    expertPrediction: "多數看好西班牙控球優勢，但提醒烏拉圭的對抗與轉換會帶來高波動。",
+    aiAnalysis: "西班牙更適合掌控比賽，但烏拉圭的壓迫與身體對抗會讓比賽不舒服。推薦方向偏西班牙不敗與雙方進球。",
+    winProbability: { home: 29, draw: 30, away: 41 },
+    recommendation: "西班牙不敗 / 雙方進球",
+    confidence: "中",
+    riskLevel: "中",
+    scoreBreakdown: { form: 21, attack: 17, defense: 12, odds: 10, squad: 8, headToHead: 3, sentiment: 7 },
+    scoreBreakdownNotes: {
+      form: "兩隊狀態都好，西班牙穩定性略高。",
+      attack: "西班牙創造力較好，烏拉圭反擊效率也不低。",
+      defense: "西班牙失球控制較佳，但烏拉圭對抗會製造混亂。",
+      odds: "市場略偏西班牙，但沒有到強烈單邊。",
+      squad: "西班牙輪換深度較優。",
+      headToHead: "歷史對戰只作輔助參考。",
+      sentiment: "專家偏西班牙不敗，但普遍提醒烏拉圭風險。",
+    },
+    summary:
+      "烏拉圭 vs 西班牙是台灣時間 06/27 早上 07:00 的熱門戰。西班牙有控球、壓迫與整體穩定度優勢，但烏拉圭的身體對抗、快速轉換與比賽硬度會讓勝負盤風險上升。模型給西班牙較高勝率，但不建議把它視為低風險主推。更合理的方向是西班牙不敗，或搭配雙方進球。若臨場西班牙賠率被壓太低，反而要注意市場過熱。",
+    keyReasons: [
+      "西班牙控球和 xGA 較佳，整體穩定度略優。",
+      "烏拉圭反擊與身體對抗會拉高比賽波動。",
+      "市場偏西班牙但不是無風險單邊。",
+      "西班牙不敗比單押客勝更保守。",
+    ],
+    sources: ["verified:fixture-search-2026-06-26", "mock:expert-consensus", "mock:market-watch"],
+  }),
+  buildMatch({
+    id: "wc-2026-egy-irn",
+    date: "2026-06-27T10:00:00+08:00",
+    homeTeam: "埃及",
+    awayTeam: "伊朗",
+    predictedScore: "1-1",
+    scorePredictions: [
+      { score: "1-1", probability: 32, note: "兩隊防守紀律都好，和局是最自然劇本。" },
+      { score: "1-0", probability: 20, note: "埃及若靠個人能力先破門，可能守住小勝。" },
+      { score: "0-1", probability: 18, note: "伊朗若定位球成功，客勝也有路徑。" },
+    ],
+    categoryTags: ["today", "upsetRisk"],
+    marketView: "市場接近均勢，和局與小球是主要共識，勝負盤波動較高。",
+    recentForm: {
+      home: "近 5 場 2 勝 2 和 1 敗，防守紀律佳",
+      away: "近 5 場 2 勝 2 和 1 敗，定位球與低位防守穩定",
+    },
+    goals: { homeFor: 6, homeAgainst: 4, awayFor: 5, awayAgainst: 4 },
+    expectedGoals: { homeXG: 1.14, homeXGA: 0.96, awayXG: 1.02, awayXGA: 0.92 },
+    injuriesSuspensions: {
+      home: "主力前場可用，但進攻依賴少數核心",
+      away: "防線完整，中場創造力普通",
+    },
+    expertPrediction: "多數預測偏低比分，雙方都不太可能冒進。",
+    aiAnalysis: "這場更像耐心與失誤控制的比賽，單邊勝負優勢不足。若要介入，小球或和局比追勝負更合理。",
+    winProbability: { home: 35, draw: 34, away: 31 },
+    recommendation: "和局 / 小球",
+    confidence: "中",
+    riskLevel: "高",
+    scoreBreakdown: { form: 18, attack: 12, defense: 14, odds: 8, squad: 7, headToHead: 2, sentiment: 7 },
+    scoreBreakdownNotes: {
+      form: "兩隊狀態接近，近期防守都比進攻可靠。",
+      attack: "進攻創造力有限，較依賴個人能力與定位球。",
+      defense: "雙方防守紀律都好，失球控制佳。",
+      odds: "市場沒有明確單邊，勝負盤不乾淨。",
+      squad: "陣容完整度差距有限。",
+      headToHead: "歷史對戰影響不大。",
+      sentiment: "預測情緒偏低比分與保守。",
+    },
+    summary:
+      "埃及 vs 伊朗在台灣時間 06/27 早上 10:00 開踢。這場模型看不出明顯勝負優勢，兩隊都偏防守紀律、低風險推進與定位球威脅。埃及可能有較高的個人突破上限，伊朗則在低位防守與定位球執行上具備穩定度。若早段沒有意外進球，比賽很可能長時間停留在僵持狀態。推薦以和局、小球或保守觀望為主，不適合重倉勝負盤。",
+    keyReasons: [
+      "兩隊防守分高於攻擊分。",
+      "市場接近均勢，和局風險很高。",
+      "小球方向比勝負盤更合理。",
+      "若臨場陣容偏保守，觀望價值更高。",
+    ],
+    sources: ["verified:fixture-search-2026-06-26", "mock:defense-profile", "mock:sentiment-scan"],
+  }),
+  buildMatch({
+    id: "wc-2026-nzl-bel",
+    date: "2026-06-27T10:00:00+08:00",
+    homeTeam: "紐西蘭",
+    awayTeam: "比利時",
+    predictedScore: "0-2",
+    scorePredictions: [
+      { score: "0-2", probability: 36, note: "比利時進攻創造力與控球能力明顯較優。" },
+      { score: "1-2", probability: 21, note: "紐西蘭若靠定位球得分，仍可能縮小差距。" },
+      { score: "0-3", probability: 17, note: "若比利時早段打開比分，後續有擴大機會。" },
+    ],
+    categoryTags: ["today", "highConfidence"],
+    marketView: "市場明顯偏比利時，客勝與讓分方向熱度高；需留意讓分過深。",
+    recentForm: {
+      home: "近 5 場 1 勝 1 和 3 敗，面對高強度壓迫較吃力",
+      away: "近 5 場 3 勝 1 和 1 敗，進攻組織與個人能力穩定",
+    },
+    goals: { homeFor: 4, homeAgainst: 9, awayFor: 10, awayAgainst: 5 },
+    expectedGoals: { homeXG: 0.78, homeXGA: 1.68, awayXG: 1.9, awayXGA: 0.94 },
+    injuriesSuspensions: {
+      home: "主力陣容可用，但後防深度不足",
+      away: "主力攻擊線可用，輪換深度佳",
+    },
+    expertPrediction: "賽前普遍看好比利時取勝，紐西蘭主要威脅來自定位球。",
+    aiAnalysis: "比利時在攻擊火力、控球與陣容深度都明顯占優。紐西蘭若無法把比賽拖慢，防線會持續承壓。",
+    winProbability: { home: 15, draw: 22, away: 63 },
+    recommendation: "比利時勝 / 比利時 -1",
+    confidence: "高",
+    riskLevel: "中",
+    scoreBreakdown: { form: 23, attack: 18, defense: 13, odds: 13, squad: 9, headToHead: 2, sentiment: 9 },
+    scoreBreakdownNotes: {
+      form: "比利時近況與整體穩定性明顯較好。",
+      attack: "比利時 xG 與進球能力都高於紐西蘭。",
+      defense: "紐西蘭面對高強度進攻時失球風險偏高。",
+      odds: "市場高度支持比利時，但讓分需控風險。",
+      squad: "比利時陣容深度與換人選擇較佳。",
+      headToHead: "直接對戰參考有限。",
+      sentiment: "專家與網路情緒明顯偏比利時勝。",
+    },
+    summary:
+      "紐西蘭 vs 比利時是台灣時間 06/27 早上 10:00 的高低差較明顯對戰。比利時在控球、攻擊火力與陣容深度都明顯優於紐西蘭，模型給出本輪最高的客勝機率。紐西蘭主要機會在定位球與防守反擊，但如果長時間被壓在半場，失球風險會逐步上升。方向上看好比利時勝，較積極可看小讓分；但若市場把讓分推太深，仍要避免追高。",
+    keyReasons: [
+      "比利時勝率與總分是本輪較高組合。",
+      "紐西蘭後防面對高壓時風險偏高。",
+      "市場與模型方向一致，但需避免讓分過熱。",
+      "比利時勝比大比分更穩健。",
+    ],
+    sources: ["verified:fixture-search-2026-06-26", "mock:team-stats", "mock:expert-consensus"],
+  }),
+];
+
+const verifiedNewsByMatchId = Object.fromEntries(
+  verifiedTaiwanScheduleMatches.map((match) => [
+    match.id,
+    {
+      updatedAt: "2026-06-26T21:45:00+08:00",
+      headline: `${match.homeTeam} vs ${match.awayTeam} 賽前重點：${match.recommendation}`,
+      newsItems: match.keyReasons.slice(0, 3),
+      instantAnalysis: match.summary,
+    },
+  ]),
+);
+
 async function fetchLiveProviderData() {
   // Future integration point:
   // 1. Select provider by FOOTBALL_DATA_PROVIDER.
@@ -488,13 +797,13 @@ export async function getWorldCupPredictions() {
       weights,
     },
     providerPlaceholders,
-    matches: liveData?.matches || mockMatches,
+    matches: liveData?.matches || verifiedTaiwanScheduleMatches,
   };
 }
 
 export async function getMatchNews(matchId) {
-  const match = mockMatches.find((item) => item.id === matchId);
-  const news = mockNewsByMatchId[matchId];
+  const match = verifiedTaiwanScheduleMatches.find((item) => item.id === matchId);
+  const news = verifiedNewsByMatchId[matchId];
 
   if (!match || !news) {
     return {
