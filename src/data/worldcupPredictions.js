@@ -764,8 +764,219 @@ const verifiedTaiwanScheduleMatches = [
   }),
 ];
 
+function createCompactVerifiedMatch({
+  id,
+  date,
+  homeTeam,
+  awayTeam,
+  predictedScore,
+  scorePredictions,
+  categoryTags,
+  winProbability,
+  recommendation,
+  confidence,
+  riskLevel,
+  scoreBreakdown,
+  marketView,
+  summary,
+  keyReasons,
+}) {
+  const [homeGoals, awayGoals] = predictedScore.split("-").map(Number);
+  const totalScore = Object.values(scoreBreakdown).reduce((sum, value) => sum + value, 0);
+  const favorite = winProbability.home > winProbability.away ? homeTeam : awayTeam;
+  const underdog = winProbability.home > winProbability.away ? awayTeam : homeTeam;
+
+  return buildMatch({
+    id,
+    date,
+    homeTeam,
+    awayTeam,
+    predictedScore,
+    scorePredictions,
+    categoryTags,
+    marketView,
+    recentForm: {
+      home: "依 2026 當屆賽程與近期賽前資訊建立的 mock 分析，正式版需由即時 API 更新。",
+      away: "依 2026 當屆賽程與近期賽前資訊建立的 mock 分析，正式版需由即時 API 更新。",
+    },
+    goals: {
+      homeFor: Math.max(4, homeGoals + 5),
+      homeAgainst: Math.max(3, awayGoals + 4),
+      awayFor: Math.max(4, awayGoals + 5),
+      awayAgainst: Math.max(3, homeGoals + 4),
+    },
+    expectedGoals: {
+      homeXG: Number((1.05 + homeGoals * 0.34 + winProbability.home / 180).toFixed(2)),
+      homeXGA: Number((0.88 + awayGoals * 0.28 + winProbability.away / 240).toFixed(2)),
+      awayXG: Number((1.05 + awayGoals * 0.34 + winProbability.away / 180).toFixed(2)),
+      awayXGA: Number((0.88 + homeGoals * 0.28 + winProbability.home / 240).toFixed(2)),
+    },
+    injuriesSuspensions: {
+      home: "未接正式傷停 API，需以賽前 10 小時內資料更新。",
+      away: "未接正式傷停 API，需以賽前 10 小時內資料更新。",
+    },
+    expertPrediction: `${favorite} 在模型中略佔優勢，但仍需以最新賽前新聞、名單與市場變化校正。`,
+    aiAnalysis: `${favorite} 的勝率與綜合分數高於 ${underdog}，但目前仍屬 mock 分析，不應視為即時投注建議。`,
+    winProbability,
+    recommendation,
+    confidence,
+    riskLevel,
+    scoreBreakdown,
+    scoreBreakdownNotes: {
+      form: "依當屆賽程與近期表現方向估算，正式版需改接即時賽程/戰績 API。",
+      attack: "以預測比分、近期攻擊印象與對戰強度估算。",
+      defense: "以失球風險、對手攻擊壓力與比賽節奏估算。",
+      odds: "目前是市場情境 mock，正式版需串接 odds provider。",
+      squad: "目前未接傷停 API，因此只給保守評估。",
+      headToHead: "歷史對戰權重低，避免過度影響模型。",
+      sentiment: "新聞與網路情緒需接即時來源後更新。",
+    },
+    summary,
+    keyReasons,
+    sources: ["verified:fixture-search-2026-06-27", "mock:analysis-until-live-api", "mock:market-scenario"],
+    totalScore,
+  });
+}
+
+const verifiedTomorrowScheduleMatches = [
+  createCompactVerifiedMatch({
+    id: "wc-2026-pan-eng",
+    date: "2026-06-28T02:00:00+08:00",
+    homeTeam: "巴拿馬",
+    awayTeam: "英格蘭",
+    predictedScore: "0-2",
+    scorePredictions: [
+      { score: "0-2", probability: 37, note: "英格蘭整體實力與禁區壓制力較高。" },
+      { score: "0-1", probability: 23, note: "若巴拿馬低位防守成功，比分可能被壓低。" },
+      { score: "1-2", probability: 17, note: "巴拿馬定位球得分時仍可能咬住比分。" },
+    ],
+    categoryTags: ["tomorrow", "hot", "highConfidence"],
+    winProbability: { home: 14, draw: 22, away: 64 },
+    recommendation: "英格蘭勝 / 英格蘭 -1",
+    confidence: "高",
+    riskLevel: "中",
+    scoreBreakdown: { form: 23, attack: 18, defense: 13, odds: 13, squad: 9, headToHead: 3, sentiment: 9 },
+    marketView: "市場明顯偏英格蘭，熱門方向需避免追過深讓分。",
+    summary:
+      "巴拿馬 vs 英格蘭是台灣時間 06/28 凌晨 02:00 的明日賽程。英格蘭在陣容深度、控球和定位球品質都明顯佔優，模型給出較高勝率。巴拿馬的主要策略會是收縮防守、拖慢節奏並等待定位球機會，但若英格蘭早段進球，讓分方向會更有利。此場適合列為高信心推薦，但仍需留意熱門盤過熱。",
+    keyReasons: ["英格蘭整體戰力與板凳深度優勢大。", "巴拿馬進攻創造力有限。", "市場偏英格蘭但讓分可能過熱。", "保守方向可看英格蘭勝。"],
+  }),
+  createCompactVerifiedMatch({
+    id: "wc-2026-cro-gha",
+    date: "2026-06-28T02:00:00+08:00",
+    homeTeam: "克羅埃西亞",
+    awayTeam: "迦納",
+    predictedScore: "1-1",
+    scorePredictions: [
+      { score: "1-1", probability: 31, note: "兩隊都有中場對抗能力，和局路徑清楚。" },
+      { score: "2-1", probability: 21, note: "克羅埃西亞若掌控節奏，有小勝機會。" },
+      { score: "1-2", probability: 18, note: "迦納速度打出反擊時可能爆冷。" },
+    ],
+    categoryTags: ["tomorrow", "upsetRisk"],
+    winProbability: { home: 36, draw: 32, away: 32 },
+    recommendation: "和局 / 雙方進球",
+    confidence: "中",
+    riskLevel: "高",
+    scoreBreakdown: { form: 18, attack: 14, defense: 12, odds: 8, squad: 7, headToHead: 2, sentiment: 7 },
+    marketView: "市場接近均勢，和局與雙方進球更值得關注。",
+    summary:
+      "克羅埃西亞 vs 迦納同樣在台灣時間 06/28 凌晨 02:00 開踢。這場勝率接近，克羅埃西亞可能有較好的中場控制，迦納則有速度和反擊爆點。模型沒有給出明確單邊方向，若投注思維過度偏向名氣隊伍，風險會升高。比較合理的方向是和局、雙方進球或保守觀望。",
+    keyReasons: ["勝率接近，單邊不乾淨。", "克羅埃西亞控場較好但速度防守有風險。", "迦納反擊具備爆冷條件。", "適合保守觀望或雙方進球。"],
+  }),
+  createCompactVerifiedMatch({
+    id: "wc-2026-alg-aut",
+    date: "2026-06-28T07:00:00+08:00",
+    homeTeam: "阿爾及利亞",
+    awayTeam: "奧地利",
+    predictedScore: "1-1",
+    scorePredictions: [
+      { score: "1-1", probability: 30, note: "雙方攻守都偏均衡，低比分拉鋸機率高。" },
+      { score: "1-2", probability: 22, note: "奧地利高壓奏效時可能拿下小勝。" },
+      { score: "2-1", probability: 18, note: "阿爾及利亞若邊路突破成功，有主勝可能。" },
+    ],
+    categoryTags: ["tomorrow", "upsetRisk"],
+    winProbability: { home: 32, draw: 33, away: 35 },
+    recommendation: "和局 / 小球",
+    confidence: "中",
+    riskLevel: "高",
+    scoreBreakdown: { form: 18, attack: 13, defense: 13, odds: 8, squad: 7, headToHead: 2, sentiment: 6 },
+    marketView: "市場偏拉鋸，勝負盤不明朗。",
+    summary:
+      "阿爾及利亞 vs 奧地利在台灣時間 06/28 早上 07:00 開踢。奧地利有較清楚的高位壓迫結構，阿爾及利亞則具備邊路突破和身體對抗。模型認為雙方差距有限，和局和小球會比單押勝負更符合風險管理。若臨場新聞顯示任一方主力前場缺陣，進球預期還會再下修。",
+    keyReasons: ["雙方勝率接近。", "進攻上限不算穩定。", "市場沒有清楚單邊訊號。", "小球與和局較合理。"],
+  }),
+  createCompactVerifiedMatch({
+    id: "wc-2026-jor-arg",
+    date: "2026-06-28T07:00:00+08:00",
+    homeTeam: "約旦",
+    awayTeam: "阿根廷",
+    predictedScore: "0-3",
+    scorePredictions: [
+      { score: "0-3", probability: 34, note: "阿根廷控球與終結品質明顯高出一截。" },
+      { score: "0-2", probability: 28, note: "若阿根廷控制消耗，可能穩健拿下。" },
+      { score: "1-3", probability: 15, note: "約旦靠定位球得分時仍可能有一球。" },
+    ],
+    categoryTags: ["tomorrow", "hot", "highConfidence"],
+    winProbability: { home: 8, draw: 17, away: 75 },
+    recommendation: "阿根廷勝 / 阿根廷 -1.5",
+    confidence: "高",
+    riskLevel: "中",
+    scoreBreakdown: { form: 24, attack: 19, defense: 14, odds: 14, squad: 10, headToHead: 3, sentiment: 9 },
+    marketView: "市場高度偏阿根廷，最大風險是讓分過深。",
+    summary:
+      "約旦 vs 阿根廷是台灣時間 06/28 早上 07:00 的熱門賽事。阿根廷在控球、進攻組織、終結能力與陣容深度都明顯優於約旦，模型給出明日最高勝率之一。約旦主要機會來自定位球與阿根廷輪換後的防線空檔，但整體勝負方向相當明確。適合看阿根廷勝，讓分則需避免臨場過熱。",
+    keyReasons: ["阿根廷整體實力差距明顯。", "約旦進攻創造力有限。", "市場與模型一致偏阿根廷。", "高信心但讓分需控風險。"],
+  }),
+  createCompactVerifiedMatch({
+    id: "wc-2026-col-por",
+    date: "2026-06-28T10:00:00+08:00",
+    homeTeam: "哥倫比亞",
+    awayTeam: "葡萄牙",
+    predictedScore: "1-2",
+    scorePredictions: [
+      { score: "1-2", probability: 29, note: "葡萄牙攻擊選擇較多，哥倫比亞仍有反擊威脅。" },
+      { score: "1-1", probability: 25, note: "若哥倫比亞壓低節奏，和局機率會上升。" },
+      { score: "0-2", probability: 18, note: "葡萄牙若先進球，控場會更明顯。" },
+    ],
+    categoryTags: ["tomorrow", "hot"],
+    winProbability: { home: 28, draw: 30, away: 42 },
+    recommendation: "葡萄牙不敗 / 雙方進球",
+    confidence: "中",
+    riskLevel: "中",
+    scoreBreakdown: { form: 20, attack: 17, defense: 12, odds: 10, squad: 8, headToHead: 2, sentiment: 8 },
+    marketView: "市場略偏葡萄牙，但哥倫比亞反擊讓客勝不宜重倉。",
+    summary:
+      "哥倫比亞 vs 葡萄牙在台灣時間 06/28 早上 10:00 開踢，是明日熱門對戰之一。葡萄牙具備較完整的攻擊選擇與輪換深度，但哥倫比亞的反擊速度與身體對抗不容忽視。模型偏向葡萄牙不敗，而非重押客勝。若臨場葡萄牙賠率被追低，雙方進球或不敗方向更符合保守策略。",
+    keyReasons: ["葡萄牙攻擊選擇較多。", "哥倫比亞反擊具威脅。", "客勝有優勢但非低風險。", "葡萄牙不敗較穩。"],
+  }),
+  createCompactVerifiedMatch({
+    id: "wc-2026-cod-uzb",
+    date: "2026-06-28T10:00:00+08:00",
+    homeTeam: "剛果民主共和國",
+    awayTeam: "烏茲別克",
+    predictedScore: "1-1",
+    scorePredictions: [
+      { score: "1-1", probability: 31, note: "兩隊勝率接近，低比分和局最合理。" },
+      { score: "2-1", probability: 20, note: "剛果民主共和國靠身體對抗可拉出主勝。" },
+      { score: "1-2", probability: 19, note: "烏茲別克若轉換效率高，也有客勝路徑。" },
+    ],
+    categoryTags: ["tomorrow", "upsetRisk"],
+    winProbability: { home: 34, draw: 33, away: 33 },
+    recommendation: "和局 / 小球",
+    confidence: "中",
+    riskLevel: "高",
+    scoreBreakdown: { form: 17, attack: 13, defense: 12, odds: 8, squad: 7, headToHead: 2, sentiment: 6 },
+    marketView: "市場分歧大，和局與小球比勝負盤更乾淨。",
+    summary:
+      "剛果民主共和國 vs 烏茲別克在台灣時間 06/28 早上 10:00 開踢。兩隊整體勝率非常接近，剛果民主共和國有身體對抗與定位球優勢，烏茲別克則可能在轉換與紀律性上取得平衡。這場模型明確列為風險提醒，不適合重倉單邊。和局、小球或保守觀望會更接近目前資料結論。",
+    keyReasons: ["勝率幾乎五五波。", "市場分歧明顯。", "小球方向較合理。", "適合列入冷門風險提醒。"],
+  }),
+];
+
+const activeVerifiedMatches = [...verifiedTaiwanScheduleMatches, ...verifiedTomorrowScheduleMatches];
+
 const verifiedNewsByMatchId = Object.fromEntries(
-  verifiedTaiwanScheduleMatches.map((match) => [
+  activeVerifiedMatches.map((match) => [
     match.id,
     {
       updatedAt: "2026-06-26T21:45:00+08:00",
@@ -797,12 +1008,12 @@ export async function getWorldCupPredictions() {
       weights,
     },
     providerPlaceholders,
-    matches: liveData?.matches || verifiedTaiwanScheduleMatches,
+    matches: liveData?.matches || activeVerifiedMatches,
   };
 }
 
 export async function getMatchNews(matchId) {
-  const match = verifiedTaiwanScheduleMatches.find((item) => item.id === matchId);
+  const match = activeVerifiedMatches.find((item) => item.id === matchId);
   const news = verifiedNewsByMatchId[matchId];
 
   if (!match || !news) {
