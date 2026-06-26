@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>世足分析預測</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Football Research Desk</p>
+          <h1>世足分析預測</h1>
+          <p class="hero-copy">
+            今日賽事、勝率、預測比分與風險提醒集中呈現。時間統一顯示台灣時間，資料先以 mock data 跑通 API 合約。
+          </p>
+        </div>
+        <div class="source-panel" aria-label="資料來源狀態">
+          <span class="status-dot"></span>
+          <div>
+            <strong id="sourceMode">Mock Data</strong>
+            <span>已保留 Sportmonks / API-Football / Highlightly / Odds API 串接位置</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="module-card" aria-labelledby="worldcup-title">
+        <div class="module-header">
+          <div>
+            <p class="eyebrow">Prediction Module</p>
+            <h2 id="worldcup-title">世足預測</h2>
+          </div>
+          <div class="score-model">
+            <span>模型總分</span>
+            <strong>100</strong>
+          </div>
+        </div>
+
+        <nav class="segments" aria-label="世足預測分類">
+          <button class="segment active" data-tab="today" type="button">今日賽事</button>
+          <button class="segment" data-tab="tomorrow" type="button">明日賽事</button>
+          <button class="segment" data-tab="hot" type="button">熱門對戰</button>
+          <button class="segment" data-tab="highConfidence" type="button">高信心推薦</button>
+          <button class="segment" data-tab="upsetRisk" type="button">冷門風險提醒</button>
+        </nav>
+
+        <div class="module-toolbar">
+          <div>
+            <strong id="activeTabTitle">今日賽事</strong>
+            <span id="activeTabHint">依開賽日期與市場熱度整理。</span>
+          </div>
+          <button class="ghost-button" id="refreshButton" type="button">更新賽程</button>
+        </div>
+
+        <div class="loading-state" id="loadingState">載入賽事分析中...</div>
+        <div class="match-grid" id="matchGrid" hidden></div>
+      </section>
+    </main>
+
+    <template id="matchCardTemplate">
+      <article class="match-card">
+        <div class="match-topline">
+          <span class="match-date"></span>
+          <span class="risk-pill"></span>
+        </div>
+        <div class="match-title-row">
+          <h3 class="match-title"></h3>
+          <div class="total-score">
+            <span>綜合評分</span>
+            <strong></strong>
+          </div>
+        </div>
+        <div class="score-row">
+          <span>預測比分</span>
+          <strong class="predicted-score"></strong>
+        </div>
+        <div class="score-predictions">
+          <div class="section-label">三組預測比分，高機率排序</div>
+          <div class="score-prediction-list"></div>
+        </div>
+        <div class="probability-bars"></div>
+        <div class="recommendation-row">
+          <div>
+            <span>推薦方向</span>
+            <strong class="recommendation"></strong>
+          </div>
+          <div>
+            <span>信心分數</span>
+            <strong class="confidence"></strong>
+          </div>
+        </div>
+        <div class="match-actions">
+          <button class="news-button" type="button">即時新聞</button>
+          <button class="analysis-button" type="button">更新分析</button>
+        </div>
+        <div class="news-panel" hidden></div>
+        <p class="summary"></p>
+        <ul class="reason-list"></ul>
+        <details class="detail-panel">
+          <summary>展開更多：詳細評分拆解</summary>
+          <div class="breakdown"></div>
+          <div class="breakdown-summary"></div>
+          <div class="data-grid"></div>
+          <div class="sources"></div>
+        </details>
+      </article>
+    </template>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
