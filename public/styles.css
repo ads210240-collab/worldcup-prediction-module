@@ -427,19 +427,18 @@ h2 {
 }
 
 .score-prediction-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  display: grid;
+  gap: 8px;
 }
 
 .score-prediction-item {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  min-width: 145px;
-  padding: 9px 12px;
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 12px;
   border: 3px solid #111;
-  border-radius: 999px;
+  border-radius: 18px;
   background: #f7f7f5;
   box-shadow: 4px 4px 0 #111;
 }
@@ -456,19 +455,15 @@ h2 {
   display: block;
   margin-top: 0;
   color: var(--black-green);
-  font-size: 22px;
+  font-size: 24px;
   text-shadow: 2px 2px 0 rgba(255, 138, 0, 0.35);
-}
-
-.score-probability span {
-  display: none;
 }
 
 .score-probability strong {
   display: block;
   margin-bottom: 3px;
   color: var(--orange-dark);
-  font-size: 20px;
+  font-size: 19px;
 }
 
 .probability-bars {
@@ -537,7 +532,7 @@ h2 {
 
 .v2-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin: 16px 0 0;
 }

@@ -25,6 +25,10 @@ function buildMarketView(odds, homeStats, awayStats) {
   return `The Odds API：主勝 ${odds.markets.home} / 和局 ${odds.markets.draw} / 客勝 ${odds.markets.away}，bookmaker: ${odds.bookmaker || "unknown"}。`;
 }
 
+function buildRankingView(homeStats, awayStats) {
+  return `${homeStats.teamName}: FIFA #${homeStats.ranking.rank} / Elo ${homeStats.ranking.elo}；${awayStats.teamName}: FIFA #${awayStats.ranking.rank} / Elo ${awayStats.ranking.elo}。`;
+}
+
 function buildExpectedGoals(homeStats, awayStats) {
   const homeFor = homeStats.tournament.goalsFor || 0;
   const awayFor = awayStats.tournament.goalsFor || 0;
@@ -86,6 +90,7 @@ async function buildMatchResponse(fixture, context) {
     scoreBreakdownNotes: prediction.scoreBreakdownNotes,
     categoryTags: buildCategoryTags(fixture, prediction),
     marketView: buildMarketView(odds, homeStats, awayStats),
+    rankingView: buildRankingView(homeStats, awayStats),
     tournamentStats: {
       home: homeStats.tournament,
       away: awayStats.tournament,

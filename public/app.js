@@ -27,7 +27,6 @@ const scoreLabels = {
   tournamentDefense: ["本屆防守穩定度", 15],
   rankingElo: ["Elo / 世界排名", 15],
   sentiment: ["新聞與陣容情緒", 10],
-  bettingOdds: ["盤口資料", 5],
 };
 
 let predictions = [];
@@ -104,7 +103,6 @@ function renderLiveStatus(data) {
   const statusRows = [
     health.fixtures === "updated" ? "✅ 賽程已更新" : "⚠️ 賽程未取得",
     health.news === "updated" ? "✅ 新聞已更新" : "⚠️ 新聞未取得",
-    health.odds === "updated" ? "✅ 盤口已更新" : "⚠️ 盤口未取得",
   ];
   const isLive = Boolean(data.liveData?.enabled);
   liveStatus.classList.toggle("is-live", isLive);
@@ -198,13 +196,8 @@ function createBreakdownSummary(match) {
 
 function createV2Metrics(match) {
   return `
-    <div><span>Over 2.5</span><strong>${match.overUnder?.over25 ?? "-"}%</strong></div>
-    <div><span>Under 2.5</span><strong>${match.overUnder?.under25 ?? "-"}%</strong></div>
-    <div><span>BTTS</span><strong>${match.btts ?? "-"}%</strong></div>
-    <div><span>Asian Handicap</span><strong>${match.asianHandicap || "-"}</strong></div>
-    <div><span>Risk Score</span><strong>${match.riskScore ?? "-"}</strong></div>
-    <div><span>Confidence Score</span><strong>${match.confidenceScore ?? "-"}</strong></div>
-    <div><span>Analysis Mode</span><strong>${match.analysisMode || "rule-based"}</strong></div>
+    <div><span>大球 2.5</span><strong>${match.overUnder?.over25 ?? "-"}%</strong></div>
+    <div><span>小球 2.5</span><strong>${match.overUnder?.under25 ?? "-"}%</strong></div>
   `;
 }
 
@@ -251,9 +244,8 @@ function createDataGrid(match) {
     ["場均進球 / 場均失球", `${match.homeTeam}: ${home.goalsForPerGame}/${home.goalsAgainstPerGame}<br>${match.awayTeam}: ${away.goalsForPerGame}/${away.goalsAgainstPerGame}`],
     ["本屆階段 / 狀態", `${match.homeTeam}: ${home.phase}，${home.advancementStatus}<br>${match.awayTeam}: ${away.phase}，${away.advancementStatus}`],
     ["小組排名 / 對戰強度", `${match.homeTeam}: ${home.groupRank}，${home.strengthContext}<br>${match.awayTeam}: ${away.groupRank}，${away.strengthContext}`],
-    ["Elo / 世界排名", match.marketView],
+    ["Elo / 世界排名", match.rankingView || match.marketView],
     ["新聞摘要", match.expertPrediction],
-    ["盤口狀態", match.marketView.includes("沒有可用盤口") ? "目前沒有可用盤口資料" : match.marketView],
     ["AI 綜合分析", `${match.aiAnalysis}<br>analysisMode: ${match.analysisMode || "rule-based"}`],
   ];
 
@@ -302,10 +294,8 @@ function renderMatches() {
     });
     node.querySelector(".summary").textContent = match.shortSummary || match.summary;
     node.querySelector(".reason-list").innerHTML = match.keyReasons.map((reason) => `<li>${reason}</li>`).join("");
-    node.querySelector(".breakdown").innerHTML = createBreakdown(match);
     node.querySelector(".breakdown-summary").innerHTML = createBreakdownSummary(match);
     node.querySelector(".data-grid").innerHTML = createDataGrid(match);
-    node.querySelector(".sources").textContent = `Sources: ${match.sources.join(", ")}`;
     matchGrid.appendChild(node);
   });
 }

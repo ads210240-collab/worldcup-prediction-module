@@ -8,9 +8,7 @@ function trimToRange(text) {
 }
 
 function buildRuleAnalysis({ fixture, homeStats, awayStats, newsItems, odds, prediction }) {
-  const oddsText = odds?.markets?.home
-    ? `盤口目前為主勝 ${odds.markets.home}、和局 ${odds.markets.draw}、客勝 ${odds.markets.away}，市場訊號已納入模型。`
-    : "目前沒有可用盤口資料，因此盤口權重不以固定數值補上，信心分已下修。";
+  const marketText = odds?.markets?.home ? "市場資料已納入低權重模型。" : "市場資料暫缺，因此信心分已保守下修。";
   const newsText = newsItems.length
     ? `最近 24 小時納入 ${newsItems.length} 則新聞，包含 ${[...new Set(newsItems.map((item) => item.source))].join("、")}。`
     : "最近 24 小時新聞樣本不足，新聞情緒不強行補分。";
@@ -22,7 +20,7 @@ function buildRuleAnalysis({ fixture, homeStats, awayStats, newsItems, odds, pre
         : "雙方";
 
   return trimToRange(
-    `${fixture.homeTeam} vs ${fixture.awayTeam} 的 V2 分析以本屆賽事數據、盤口、World Football Elo、FIFA Ranking 與新聞情緒重新計算。${fixture.homeTeam} 本屆表現為 ${homeStats.tournament.formText}；${fixture.awayTeam} 本屆表現為 ${awayStats.tournament.formText}。Elo/FIFA 顯示 ${favorite} 目前基礎面較有支撐，模型給出 ${prediction.predictedScore} 為最高機率比分，Over 2.5 為 ${prediction.overUnder.over25}%、BTTS 為 ${prediction.btts}%。${oddsText}${newsText} 風險在於免費來源可能缺少完整傷停與即時陣容，${prediction.hasEstimation ? "此分析部分資料使用估算，" : ""}若臨場名單或盤口快速變動，應降低信心並重新整理。`,
+    `${fixture.homeTeam} vs ${fixture.awayTeam} 的 V2 分析以本屆賽事數據、World Football Elo、FIFA Ranking 與新聞情緒重新計算。${fixture.homeTeam} 本屆表現為 ${homeStats.tournament.formText}；${fixture.awayTeam} 本屆表現為 ${awayStats.tournament.formText}。Elo/FIFA 顯示 ${favorite} 目前基礎面較有支撐，模型給出 ${prediction.predictedScore} 為最高機率比分，大球 2.5 機率為 ${prediction.overUnder.over25}%。${marketText}${newsText} 風險在於免費來源可能缺少完整傷停與即時陣容，${prediction.hasEstimation ? "此分析部分資料使用估算，" : ""}若臨場名單快速變動，應降低信心並重新整理。`,
   );
 }
 

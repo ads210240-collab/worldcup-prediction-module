@@ -3,7 +3,12 @@ import { buildSourceStatus } from "./sourceUtils.js";
 import { getFifaRankings } from "./fifaRankingService.js";
 import { getWorldEloRatings } from "./worldEloService.js";
 import { fetchFootballDataMatches } from "./footballDataService.js";
-import { formatTaipeiDate } from "./timeService.js";
+import { fetchEspnScoreboard } from "./espnScoreboardService.js";
+import { formatEspnDate, formatTaipeiDate } from "./timeService.js";
+
+const FOOTBALL_SEASON = process.env.FOOTBALL_SEASON || "2026";
+const TOURNAMENT_START_DATE = process.env.FOOTBALL_TOURNAMENT_START_DATE || `${FOOTBALL_SEASON}-06-01`;
+const TOURNAMENT_LOOKBACK_DAYS = Number(process.env.FOOTBALL_TOURNAMENT_LOOKBACK_DAYS || 35);
 
 function inferTournamentPhase(fixtures) {
   const stageText = fixtures
@@ -88,6 +93,30 @@ function summarizeTournamentStats(teamName, completedFixtures) {
   };
 }
 
+function uniqueFixtures(fixtures) {
+  const seen = new Set();
+  return fixtures.filter((fixture) => {
+    const key = fixture.id || `${fixture.date}-${fixture.homeTeam}-${fixture.awayTeam}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function getTournamentDates() {
+  const today = new Date();
+  const requestedStart = new Date(`${TOURNAMENT_START_DATE}T00:00:00+08:00`);
+  const lookbackStart = new Date(today.getTime() - TOURNAMENT_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const start = requestedStart > lookbackStart ? requestedStart : lookbackStart;
+  const dates = [];
+
+  for (let cursor = new Date(start); cursor <= today; cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000)) {
+    dates.push(new Date(cursor));
+  }
+
+  return dates;
+}
+
 export async function getTeamStats(fixtures) {
   return withCache("team-stats:v2", cacheTtl.teamStats, async () => {
     const sourceStatuses = [];
@@ -95,9 +124,8 @@ export async function getTeamStats(fixtures) {
 
     try {
       const today = new Date();
-      const from = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
       const { fixtures: footballDataFixtures, metas } = await fetchFootballDataMatches({
-        dateFrom: formatTaipeiDate(from),
+        dateFrom: formatTaipeiDate(new Date(`${TOURNAMENT_START_DATE}T00:00:00+08:00`)),
         dateTo: formatTaipeiDate(today),
       });
       supplementalFixtures = footballDataFixtures;
@@ -120,7 +148,48 @@ export async function getTeamStats(fixtures) {
       );
     }
 
-    const completedFixtures = [...fixtures, ...supplementalFixtures].filter((fixture) => {
+    try {
+      const dates = getTournamentDates();
+      const results = await Promise.all(
+        dates.map((date) =>
+          fetchEspnScoreboard(formatEspnDate(date)).catch((error) => ({
+            fixtures: [],
+            meta: {
+              ok: false,
+              error: error instanceof Error ? error.message : "failed",
+              httpStatus: error.httpStatus,
+              responseTimeMs: error.responseTimeMs,
+            },
+          })),
+        ),
+      );
+      const espnTournamentFixtures = results.flatMap((result) => result.fixtures || []);
+      supplementalFixtures = uniqueFixtures([...supplementalFixtures, ...espnTournamentFixtures]);
+      const failed = results.filter((result) => result.meta?.ok === false).length;
+      sourceStatuses.push(
+        buildSourceStatus({
+          source: "ESPN Scoreboard 本屆歷史賽事",
+          ok: espnTournamentFixtures.length > 0,
+          count: espnTournamentFixtures.length,
+          meta: {
+            cacheHit: false,
+            responseTimeMs: results.reduce((sum, result) => sum + (result.meta?.responseTimeMs || 0), 0),
+            error: failed ? `${failed} days failed` : null,
+          },
+        }),
+      );
+    } catch (error) {
+      sourceStatuses.push(
+        buildSourceStatus({
+          source: "ESPN Scoreboard 本屆歷史賽事",
+          ok: false,
+          error: error instanceof Error ? error.message : "failed",
+          meta: { httpStatus: error.httpStatus, responseTimeMs: error.responseTimeMs },
+        }),
+      );
+    }
+
+    const completedFixtures = uniqueFixtures([...fixtures, ...supplementalFixtures]).filter((fixture) => {
       const status = String(fixture.status || "").toUpperCase();
       return status === "FINISHED" || status.includes("FULL_TIME") || status.includes("FINAL") || fixture.providerMeta?.state === "post";
     });
