@@ -1,12 +1,12 @@
 import { clamp } from "./sourceUtils.js";
 
 const weights = {
-  recentFive: 30,
-  bettingOdds: 20,
-  worldElo: 20,
-  fifaRanking: 10,
+  tournamentPerformance: 35,
+  tournamentAttack: 20,
+  tournamentDefense: 15,
+  rankingElo: 15,
   sentiment: 10,
-  homeAway: 10,
+  bettingOdds: 5,
 };
 
 function hashNumber(input) {
@@ -19,18 +19,24 @@ function hashNumber(input) {
   return Math.abs(hash >>> 0);
 }
 
-function formRate(stats) {
-  const sample = stats?.recent?.sampleSize || 0;
+function tournamentPerformanceRate(stats) {
+  const sample = stats?.tournament?.played || stats?.recent?.sampleSize || 0;
   if (!sample) return null;
-  const record = stats.recent.record || { wins: 0, draws: 0, losses: 0 };
+  const record = stats.tournament?.record || stats.recent?.record || { wins: 0, draws: 0, losses: 0 };
   return clamp((record.wins * 3 + record.draws) / (sample * 3), 0, 1);
 }
 
-function homeAwayRate(stats, side) {
-  const recent = stats?.recent;
-  if (!recent?.sampleSize) return null;
-  const sideMatches = side === "home" ? recent.homeMatches : recent.awayMatches;
-  return clamp(0.45 + sideMatches / Math.max(recent.sampleSize, 1) * 0.2, 0.35, 0.75);
+function attackRate(stats) {
+  const tournament = stats?.tournament || stats?.recent;
+  if (!tournament?.played && !tournament?.sampleSize) return null;
+  return clamp((tournament.goalsForPerGame ?? tournament.goalsFor / Math.max(tournament.sampleSize, 1)) / 2.5, 0.05, 0.95);
+}
+
+function defenseRate(stats) {
+  const tournament = stats?.tournament || stats?.recent;
+  if (!tournament?.played && !tournament?.sampleSize) return null;
+  const against = tournament.goalsAgainstPerGame ?? tournament.goalsAgainst / Math.max(tournament.sampleSize, 1);
+  return clamp(1 - against / 2.5, 0.05, 0.95);
 }
 
 function sentimentScore(newsItems) {
@@ -80,40 +86,40 @@ function eloRate(homeElo, awayElo) {
 }
 
 function buildSignals({ fixture, homeStats, awayStats, odds, newsItems }) {
-  const homeForm = formRate(homeStats);
-  const awayForm = formRate(awayStats);
+  const homePerformance = tournamentPerformanceRate(homeStats);
+  const awayPerformance = tournamentPerformanceRate(awayStats);
+  const homeAttack = attackRate(homeStats);
+  const awayAttack = attackRate(awayStats);
+  const homeDefense = defenseRate(homeStats);
+  const awayDefense = defenseRate(awayStats);
   const market = oddsProbability(odds);
   const elo = eloRate(homeStats?.ranking?.elo, awayStats?.ranking?.elo);
   const fifa = rankingRate(homeStats?.ranking?.rank, awayStats?.ranking?.rank);
+  const rankingElo = elo == null && fifa == null ? null : clamp(((elo ?? 0.5) * 0.65 + (fifa ?? 0.5) * 0.35), 0.1, 0.9);
   const sentiment = sentimentScore(newsItems);
-  const homeAway = (() => {
-    const home = homeAwayRate(homeStats, "home");
-    const away = homeAwayRate(awayStats, "away");
-    if (home == null || away == null) return null;
-    return clamp(0.5 + (home - away) * 0.55, 0.25, 0.75);
-  })();
 
   return {
-    recentFive: homeForm == null || awayForm == null ? null : clamp(0.5 + (homeForm - awayForm) * 0.7, 0.15, 0.85),
+    tournamentPerformance:
+      homePerformance == null || awayPerformance == null ? null : clamp(0.5 + (homePerformance - awayPerformance) * 0.7, 0.15, 0.85),
+    tournamentAttack: homeAttack == null || awayDefense == null ? null : clamp(0.5 + (homeAttack - awayDefense) * 0.45, 0.15, 0.85),
+    tournamentDefense: homeDefense == null || awayAttack == null ? null : clamp(0.5 + (homeDefense - awayAttack) * 0.45, 0.15, 0.85),
+    rankingElo,
     bettingOdds: market?.home ?? null,
     marketDraw: market?.draw ?? null,
     marketAway: market?.away ?? null,
-    worldElo: elo,
-    fifaRanking: fifa,
     sentiment,
-    homeAway,
     signature: `${fixture.id}-${fixture.date}-${fixture.homeTeam}-${fixture.awayTeam}`,
   };
 }
 
 function buildScoreBreakdownV2(signals) {
   const parts = {
-    recentFive: scoreSource(signals.recentFive, weights.recentFive),
-    bettingOdds: scoreSource(signals.bettingOdds, weights.bettingOdds),
-    worldElo: scoreSource(signals.worldElo, weights.worldElo),
-    fifaRanking: scoreSource(signals.fifaRanking, weights.fifaRanking),
+    tournamentPerformance: scoreSource(signals.tournamentPerformance, weights.tournamentPerformance),
+    tournamentAttack: scoreSource(signals.tournamentAttack, weights.tournamentAttack),
+    tournamentDefense: scoreSource(signals.tournamentDefense, weights.tournamentDefense),
+    rankingElo: scoreSource(signals.rankingElo, weights.rankingElo),
     sentiment: scoreSource(signals.sentiment, weights.sentiment),
-    homeAway: scoreSource(signals.homeAway, weights.homeAway),
+    bettingOdds: scoreSource(signals.bettingOdds, weights.bettingOdds),
   };
 
   const usableWeight = Object.values(parts).reduce((sum, item) => sum + item.usableWeight, 0);
@@ -132,12 +138,12 @@ function buildScoreBreakdownV2(signals) {
 
 function buildProbabilities(signals) {
   const sourceWeights = [
-    ["recentFive", weights.recentFive],
-    ["bettingOdds", weights.bettingOdds],
-    ["worldElo", weights.worldElo],
-    ["fifaRanking", weights.fifaRanking],
+    ["tournamentPerformance", weights.tournamentPerformance],
+    ["tournamentAttack", weights.tournamentAttack],
+    ["tournamentDefense", weights.tournamentDefense],
+    ["rankingElo", weights.rankingElo],
     ["sentiment", weights.sentiment],
-    ["homeAway", weights.homeAway],
+    ["bettingOdds", weights.bettingOdds],
   ];
 
   let weightedHome = 0;
@@ -170,10 +176,12 @@ function poisson(lambda, goals) {
 }
 
 function buildGoalModel({ fixture, homeStats, awayStats, probability }) {
-  const homeFor = homeStats.recent.sampleSize ? homeStats.recent.goalsFor / homeStats.recent.sampleSize : 1.1;
-  const awayFor = awayStats.recent.sampleSize ? awayStats.recent.goalsFor / awayStats.recent.sampleSize : 1.0;
-  const homeAgainst = homeStats.recent.sampleSize ? homeStats.recent.goalsAgainst / homeStats.recent.sampleSize : 1.0;
-  const awayAgainst = awayStats.recent.sampleSize ? awayStats.recent.goalsAgainst / awayStats.recent.sampleSize : 1.1;
+  const homeTournament = homeStats.tournament || homeStats.recent;
+  const awayTournament = awayStats.tournament || awayStats.recent;
+  const homeFor = homeTournament.played ? homeTournament.goalsForPerGame : 1.1;
+  const awayFor = awayTournament.played ? awayTournament.goalsForPerGame : 1.0;
+  const homeAgainst = homeTournament.played ? homeTournament.goalsAgainstPerGame : 1.0;
+  const awayAgainst = awayTournament.played ? awayTournament.goalsAgainstPerGame : 1.1;
   const seed = hashNumber(`${fixture.id}-${fixture.date}`);
 
   return {
@@ -203,7 +211,7 @@ function buildPredictedScores(context) {
     .map((item, index) => ({
       score: item.score,
       probability: item.probability,
-      note: index === 0 ? "Poisson 進球模型最高機率比分。" : "依攻防、Elo、近況重新排序的替代比分。",
+      note: index === 0 ? "本屆攻防與 Poisson 進球模型最高機率比分。" : "依本屆攻防、Elo 與新聞重新排序的替代比分。",
     }));
 }
 
@@ -292,31 +300,34 @@ export function buildPrediction({ fixture, homeStats, awayStats, newsItems = [],
     totalScore: breakdown.totalScore,
     scoreBreakdownV2: breakdown.scoreBreakdownV2,
     scoreBreakdown: {
-      form: breakdown.scoreBreakdownV2.recentFive,
-      attack: breakdown.scoreBreakdownV2.worldElo,
-      defense: breakdown.scoreBreakdownV2.fifaRanking,
+      form: breakdown.scoreBreakdownV2.tournamentPerformance,
+      attack: breakdown.scoreBreakdownV2.tournamentAttack,
+      defense: breakdown.scoreBreakdownV2.tournamentDefense,
       odds: breakdown.scoreBreakdownV2.bettingOdds,
-      squad: breakdown.scoreBreakdownV2.homeAway,
+      squad: breakdown.scoreBreakdownV2.rankingElo,
       headToHead: 0,
       sentiment: breakdown.scoreBreakdownV2.sentiment,
     },
     scoreBreakdownNotes: {
-      recentFive: `${fixture.homeTeam}: ${homeStats.recent.formText}；${fixture.awayTeam}: ${awayStats.recent.formText}`,
-      bettingOdds: odds?.markets?.home ? "採用 The Odds API 主勝/和局/客勝。" : "缺少盤口來源，此權重不以固定值補分。",
-      worldElo: homeStats.ranking.elo && awayStats.ranking.elo ? `Elo ${homeStats.ranking.elo} vs ${awayStats.ranking.elo}` : "Elo 缺資料，此權重降低信心。",
-      fifaRanking: homeStats.ranking.rank && awayStats.ranking.rank ? `FIFA #${homeStats.ranking.rank} vs #${awayStats.ranking.rank}` : "FIFA Ranking 缺資料，此權重降低信心。",
+      tournamentPerformance: `${fixture.homeTeam}: ${homeStats.tournament.formText}；${fixture.awayTeam}: ${awayStats.tournament.formText}`,
+      tournamentAttack: `${fixture.homeTeam} 場均進球 ${homeStats.tournament.goalsForPerGame}；${fixture.awayTeam} 場均失球 ${awayStats.tournament.goalsAgainstPerGame}`,
+      tournamentDefense: `${fixture.homeTeam} 場均失球 ${homeStats.tournament.goalsAgainstPerGame}；${fixture.awayTeam} 場均進球 ${awayStats.tournament.goalsForPerGame}`,
+      rankingElo:
+        homeStats.ranking.elo && awayStats.ranking.elo
+          ? `Elo ${homeStats.ranking.elo} vs ${awayStats.ranking.elo}；FIFA #${homeStats.ranking.rank} vs #${awayStats.ranking.rank}`
+          : "Elo / 世界排名缺資料，此權重降低信心。",
       sentiment: newsItems.length ? `納入最近 24 小時 ${newsItems.length} 則新聞。` : "新聞樣本不足，此權重降低信心。",
-      homeAway: "依主客場樣本重新估算，不使用固定中性分。",
-      form: `${fixture.homeTeam}: ${homeStats.recent.formText}；${fixture.awayTeam}: ${awayStats.recent.formText}`,
-      attack: "V2 以 World Football Elo 對應攻防強度。",
-      defense: "V2 以 FIFA Ranking 對應基礎穩定度。",
+      bettingOdds: odds?.markets?.home ? "採用 The Odds API 主勝/和局/客勝。" : "缺少盤口來源，此權重不補分，只降低信心。",
+      form: `${fixture.homeTeam}: ${homeStats.tournament.formText}；${fixture.awayTeam}: ${awayStats.tournament.formText}`,
+      attack: "依本屆場均進球與對手場均失球估算攻擊效率。",
+      defense: "依本屆場均失球與對手場均進球估算防守穩定度。",
       odds: odds?.markets?.home ? "採用 The Odds API h2h 盤口。" : "目前沒有可用盤口資料。",
-      squad: "V2 以主客場表現取代固定陣容分。",
+      squad: "V2 以 Elo / 世界排名輔助評估基礎實力。",
       headToHead: "V2 不用固定歷史對戰分；缺資料時權重不補。",
     },
     keyReasons: [
-      `${fixture.homeTeam} 近況：${homeStats.recent.formText}`,
-      `${fixture.awayTeam} 近況：${awayStats.recent.formText}`,
+      `${fixture.homeTeam} 本屆表現：${homeStats.tournament.formText}`,
+      `${fixture.awayTeam} 本屆表現：${awayStats.tournament.formText}`,
       odds?.markets?.home ? `盤口：主勝 ${odds.markets.home} / 和 ${odds.markets.draw} / 客勝 ${odds.markets.away}` : "目前沒有可用盤口資料，信心分會下修。",
       `Elo/FIFA：${fixture.homeTeam} ${homeStats.ranking.elo || "缺"} / #${homeStats.ranking.rank || "缺"}，${fixture.awayTeam} ${awayStats.ranking.elo || "缺"} / #${awayStats.ranking.rank || "缺"}`,
       hasEstimation ? "此分析部分資料使用估算。" : "主要來源完整度良好。",

@@ -44,7 +44,7 @@
         </div>
         <div class="live-status" id="liveStatus"></div>
         <details class="debug-panel" id="debugPanel">
-          <summary>Debug Panel：資料來源狀態</summary>
+          <summary>Developer Mode：資料來源 Debug</summary>
           <div class="debug-grid"></div>
         </details>
 
@@ -62,7 +62,7 @@
         <div class="match-title-row">
           <h3 class="match-title"></h3>
           <div class="total-score">
-            <span>綜合評分</span>
+            <span>AI 勝率</span>
             <strong></strong>
           </div>
         </div>
@@ -77,28 +77,27 @@
         <div class="probability-bars"></div>
         <div class="recommendation-row">
           <div>
-            <span>推薦方向</span>
-            <strong class="recommendation"></strong>
-          </div>
-          <div>
-            <span>信心分數</span>
+            <span>信心等級</span>
             <strong class="confidence"></strong>
           </div>
+          <div>
+            <span>風險等級</span>
+            <strong class="risk-score"></strong>
+          </div>
         </div>
-        <div class="v2-metrics"></div>
         <div class="estimation-notice" hidden>此分析部分資料使用估算。</div>
         <div class="match-actions">
-          <button class="news-button" type="button">即時新聞</button>
-          <button class="analysis-button" type="button">更新分析</button>
+          <button class="analysis-button" type="button">重新整理分析</button>
         </div>
         <div class="news-panel" hidden></div>
         <p class="summary"></p>
-        <ul class="reason-list"></ul>
         <details class="detail-panel">
-          <summary>展開更多：詳細評分拆解</summary>
-          <div class="breakdown"></div>
+          <summary>展開分析</summary>
           <div class="breakdown-summary"></div>
           <div class="data-grid"></div>
+          <div class="v2-metrics"></div>
+          <ul class="reason-list"></ul>
+          <div class="breakdown"></div>
           <div class="sources"></div>
         </details>
       </article>

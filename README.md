@@ -40,7 +40,7 @@ src/services/
 
 ### 2. teamStatsService
 
-用途：依 fixtures 計算最近戰績、主客場、進球、失球，並合併 FIFA Ranking 與 World Football Elo。
+用途：依本屆 fixtures 計算已賽場次、勝和敗、進球、失球、場均、淨勝球、階段與晉級狀態，並合併 FIFA Ranking 與 World Football Elo。
 
 快取：6 小時。
 
@@ -82,12 +82,12 @@ src/services/
 
 Prediction Engine V2 權重：
 
-- 近期五場：30%
-- Betting Odds：20%
-- World Football Elo：20%
-- FIFA Ranking：10%
-- 新聞情緒：10%
-- 主客場：10%
+- 本屆賽事表現：35%
+- 本屆攻擊效率：20%
+- 本屆防守穩定度：15%
+- Elo / 世界排名：15%
+- 新聞與陣容情緒：10%
+- 盤口資料：5%
 
 缺少來源時不會用固定值補分，會降低 usable weight 與 confidence。
 
@@ -102,7 +102,7 @@ Prediction Engine V2 權重：
 - 風險評級
 - AI 摘要與 `analysisMode`
 
-比分使用 Poisson 進球模型，依每場近期戰績、Elo/FIFA、新聞、盤口與主客場重新排序，不使用固定比分模板。
+比分使用 Poisson 進球模型，依每場本屆攻防、Elo/FIFA、新聞與盤口重新排序，不使用固定比分模板。
 
 ### 6. aiAnalysisService
 

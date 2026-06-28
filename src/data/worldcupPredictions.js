@@ -26,12 +26,12 @@ function buildMarketView(odds, homeStats, awayStats) {
 }
 
 function buildExpectedGoals(homeStats, awayStats) {
-  const homeFor = homeStats.recent.goalsFor || 0;
-  const awayFor = awayStats.recent.goalsFor || 0;
-  const homeAgainst = homeStats.recent.goalsAgainst || 0;
-  const awayAgainst = awayStats.recent.goalsAgainst || 0;
-  const homeSample = Math.max(homeStats.recent.sampleSize, 1);
-  const awaySample = Math.max(awayStats.recent.sampleSize, 1);
+  const homeFor = homeStats.tournament.goalsFor || 0;
+  const awayFor = awayStats.tournament.goalsFor || 0;
+  const homeAgainst = homeStats.tournament.goalsAgainst || 0;
+  const awayAgainst = awayStats.tournament.goalsAgainst || 0;
+  const homeSample = Math.max(homeStats.tournament.played, 1);
+  const awaySample = Math.max(awayStats.tournament.played, 1);
 
   return {
     homeXG: Number(Math.max(0.8, homeFor / homeSample || homeStats.ranking.elo / 1200).toFixed(2)),
@@ -39,6 +39,12 @@ function buildExpectedGoals(homeStats, awayStats) {
     awayXG: Number(Math.max(0.8, awayFor / awaySample || awayStats.ranking.elo / 1200).toFixed(2)),
     awayXGA: Number(Math.max(0.7, awayAgainst / awaySample || homeStats.ranking.elo / 1500).toFixed(2)),
   };
+}
+
+function summarizeForCard(summary) {
+  const text = String(summary || "").replace(/\s+/g, " ").trim();
+  if (text.length <= 120) return text;
+  return `${text.slice(0, 116)}...`;
 }
 
 async function buildMatchResponse(fixture, context) {
@@ -80,15 +86,19 @@ async function buildMatchResponse(fixture, context) {
     scoreBreakdownNotes: prediction.scoreBreakdownNotes,
     categoryTags: buildCategoryTags(fixture, prediction),
     marketView: buildMarketView(odds, homeStats, awayStats),
+    tournamentStats: {
+      home: homeStats.tournament,
+      away: awayStats.tournament,
+    },
     recentForm: {
-      home: homeStats.recent.formText,
-      away: awayStats.recent.formText,
+      home: homeStats.tournament.formText,
+      away: awayStats.tournament.formText,
     },
     goals: {
-      homeFor: homeStats.recent.goalsFor,
-      homeAgainst: homeStats.recent.goalsAgainst,
-      awayFor: awayStats.recent.goalsFor,
-      awayAgainst: awayStats.recent.goalsAgainst,
+      homeFor: homeStats.tournament.goalsFor,
+      homeAgainst: homeStats.tournament.goalsAgainst,
+      awayFor: awayStats.tournament.goalsFor,
+      awayAgainst: awayStats.tournament.goalsAgainst,
     },
     expectedGoals: buildExpectedGoals(homeStats, awayStats),
     injuriesSuspensions: {
@@ -99,6 +109,7 @@ async function buildMatchResponse(fixture, context) {
     aiAnalysis: aiAnalysis.summary,
     analysisMode: aiAnalysis.analysisMode,
     summary: aiAnalysis.summary,
+    shortSummary: summarizeForCard(aiAnalysis.summary),
     keyReasons: prediction.keyReasons,
     hasEstimation: prediction.hasEstimation,
     estimatedSources: prediction.estimatedSources,
@@ -114,6 +125,11 @@ export async function getWorldCupPredictions() {
   const odds = await getOdds(fixturesResult.fixtures);
   const context = { stats, news, odds };
   const matches = await Promise.all(fixturesResult.fixtures.map((fixture) => buildMatchResponse(fixture, context)));
+  const sourceHealth = {
+    fixtures: fixturesResult.sourceStatuses.some((status) => status.ok) ? "updated" : "failed",
+    news: news.sourceStatuses.some((status) => status.ok) ? "updated" : "failed",
+    odds: odds.sourceStatuses.some((status) => status.ok) ? "updated" : "missing",
+  };
   const payload = {
     generatedAt: new Date().toISOString(),
     sourceMode: fixturesResult.isFallback ? "fallback-mock" : "live-free",
@@ -153,6 +169,7 @@ export async function getWorldCupPredictions() {
           ...odds.sourceStatuses,
         ],
       },
+      sourceHealth,
       fallbackActive: fixturesResult.isFallback,
       fallbackMessage: fixturesResult.isFallback ? "目前資料來源暫時無法取得，即時資料已切換為模擬資料" : null,
       limitations: [

@@ -22,7 +22,7 @@ function buildRuleAnalysis({ fixture, homeStats, awayStats, newsItems, odds, pre
         : "雙方";
 
   return trimToRange(
-    `${fixture.homeTeam} vs ${fixture.awayTeam} 的 V2 分析由近五場、盤口、World Football Elo、FIFA Ranking、新聞情緒與主客場表現重新計算。${fixture.homeTeam} 近期為 ${homeStats.recent.formText}，${fixture.awayTeam} 近期為 ${awayStats.recent.formText}。Elo/FIFA 顯示 ${favorite} 目前基礎面較有支撐，模型給出 ${prediction.predictedScore} 為最高機率比分，Over 2.5 為 ${prediction.overUnder.over25}%、BTTS 為 ${prediction.btts}%。${oddsText}${newsText} 風險在於免費來源可能缺少完整傷停與即時陣容，${prediction.hasEstimation ? "此分析部分資料使用估算，" : ""}若臨場名單或盤口快速變動，應降低信心並重新整理。`,
+    `${fixture.homeTeam} vs ${fixture.awayTeam} 的 V2 分析以本屆賽事數據、盤口、World Football Elo、FIFA Ranking 與新聞情緒重新計算。${fixture.homeTeam} 本屆表現為 ${homeStats.tournament.formText}；${fixture.awayTeam} 本屆表現為 ${awayStats.tournament.formText}。Elo/FIFA 顯示 ${favorite} 目前基礎面較有支撐，模型給出 ${prediction.predictedScore} 為最高機率比分，Over 2.5 為 ${prediction.overUnder.over25}%、BTTS 為 ${prediction.btts}%。${oddsText}${newsText} 風險在於免費來源可能缺少完整傷停與即時陣容，${prediction.hasEstimation ? "此分析部分資料使用估算，" : ""}若臨場名單或盤口快速變動，應降低信心並重新整理。`,
   );
 }
 
@@ -38,7 +38,7 @@ async function buildLlmAnalysis(context) {
       input: [
         {
           role: "system",
-          content: "你是台灣繁體中文足球賽事研究分析師。請輸出 150 到 300 字，語氣專業、保守，不像賭博下注。",
+          content: "你是台灣繁體中文足球賽事研究分析師。請依本屆賽事數據輸出 150 到 300 字，語氣專業、保守，不像賭博下注。",
         },
         {
           role: "user",

@@ -5,10 +5,29 @@ import { getWorldEloRatings } from "./worldEloService.js";
 import { fetchFootballDataMatches } from "./footballDataService.js";
 import { formatTaipeiDate } from "./timeService.js";
 
-function summarizeRecentMatches(teamName, completedFixtures) {
+function inferTournamentPhase(fixtures) {
+  const stageText = fixtures
+    .map((fixture) => `${fixture.providerMeta?.stage || ""} ${fixture.providerMeta?.round || ""} ${fixture.competition || ""}`)
+    .join(" ")
+    .toLowerCase();
+
+  if (stageText.includes("round_of_32") || stageText.includes("32")) return "32 強";
+  if (stageText.includes("round_of_16") || stageText.includes("16")) return "16 強";
+  if (stageText.includes("quarter") || stageText.includes("semi") || stageText.includes("final")) return "淘汰賽";
+  return "小組賽";
+}
+
+function inferTournamentStatus(stats) {
+  if (!stats.played) return "尚未出賽";
+  if (stats.played >= 3 && stats.record.wins >= 2) return "晉級機率高";
+  if (stats.played >= 3 && stats.record.losses >= 2 && stats.goalDifference < 0) return "淘汰風險高";
+  return "競爭中";
+}
+
+function summarizeTournamentStats(teamName, completedFixtures) {
   const matches = completedFixtures
     .filter((fixture) => fixture.homeTeam === teamName || fixture.awayTeam === teamName)
-    .slice(-5);
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
 
   let wins = 0;
   let draws = 0;
@@ -35,16 +54,37 @@ function summarizeRecentMatches(teamName, completedFixtures) {
     else losses += 1;
   }
 
+  const played = matches.length;
+  const goalDifference = goalsFor - goalsAgainst;
+  const goalsForPerGame = played ? Number((goalsFor / played).toFixed(2)) : 0;
+  const goalsAgainstPerGame = played ? Number((goalsAgainst / played).toFixed(2)) : 0;
+  const record = { wins, draws, losses };
+  const formText = played
+    ? `${wins} 勝 ${draws} 和 ${losses} 敗，進 ${goalsFor} 球、失 ${goalsAgainst} 球`
+    : "本屆尚無比賽數據，改用排名 / Elo / 新聞資料輔助估算";
+
   return {
-    sampleSize: matches.length,
-    record: { wins, draws, losses },
+    played,
+    sampleSize: played,
+    record,
     goalsFor,
     goalsAgainst,
+    goalsForPerGame,
+    goalsAgainstPerGame,
+    goalDifference,
     homeMatches,
     awayMatches,
-    formText: matches.length
-      ? `近 ${matches.length} 場 ${wins} 勝 ${draws} 和 ${losses} 敗，進 ${goalsFor} 球、失 ${goalsAgainst} 球`
-      : "免費來源暫無最近五場完整戰績，使用排名與賽程脈絡估算",
+    phase: inferTournamentPhase(matches),
+    groupRank: played ? "免費來源未提供小組排名" : "尚無排名",
+    advancementStatus: inferTournamentStatus({ played, record, goalDifference }),
+    strengthContext: played
+      ? goalDifference >= 2
+        ? "本屆面對對手時攻守效率偏強"
+        : goalDifference <= -2
+          ? "本屆面對對手時防守壓力偏高"
+          : "本屆對戰表現接近均勢"
+      : "尚無本屆對戰樣本",
+    formText,
   };
 }
 
@@ -63,7 +103,7 @@ export async function getTeamStats(fixtures) {
       supplementalFixtures = footballDataFixtures;
       sourceStatuses.push(
         buildSourceStatus({
-          source: "football-data.org team recent matches",
+          source: "football-data.org 本屆賽事資料",
           ok: footballDataFixtures.length > 0,
           count: footballDataFixtures.length,
           meta: metas[metas.length - 1] || {},
@@ -72,7 +112,7 @@ export async function getTeamStats(fixtures) {
     } catch (error) {
       sourceStatuses.push(
         buildSourceStatus({
-          source: "football-data.org team recent matches",
+          source: "football-data.org 本屆賽事資料",
           ok: false,
           error: error instanceof Error ? error.message : "failed",
           meta: { httpStatus: error.httpStatus, responseTimeMs: error.responseTimeMs },
@@ -90,15 +130,16 @@ export async function getTeamStats(fixtures) {
 
     const statsByTeam = Object.fromEntries(
       teams.map((teamName) => {
-        const recent = summarizeRecentMatches(teamName, completedFixtures);
+        const tournament = summarizeTournamentStats(teamName, completedFixtures);
         const fifaRanking = fifa.rankingsByTeam[teamName] || { rank: null, estimated: true };
         const eloRating = elo.eloByTeam[teamName] || { elo: null, estimated: true };
-        const estimated = recent.sampleSize < 5 || fifaRanking.estimated || eloRating.estimated;
+        const estimated = tournament.played === 0 || fifaRanking.estimated || eloRating.estimated;
         return [
           teamName,
           {
             teamName,
-            recent,
+            tournament,
+            recent: tournament,
             ranking: {
               rank: fifaRanking.rank || 80,
               elo: eloRating.elo || 1500,
@@ -108,21 +149,22 @@ export async function getTeamStats(fixtures) {
               eloEstimated: Boolean(eloRating.estimated),
             },
             homeAway: {
-              home: recent.homeMatches,
-              away: recent.awayMatches,
+              home: tournament.homeMatches,
+              away: tournament.awayMatches,
             },
-            source: recent.sampleSize ? "fixtures-derived" : "ranking-estimate",
+            source: tournament.played ? "tournament-fixtures-derived" : "ranking-estimate",
             dataQuality: {
               estimated,
-              recentSampleSize: recent.sampleSize,
+              tournamentSampleSize: tournament.played,
+              recentSampleSize: tournament.played,
               missingSources: [
-                recent.sampleSize < 5 ? "recent-five" : "",
+                tournament.played === 0 ? "current-tournament" : "",
                 fifaRanking.estimated ? "fifa-ranking" : "",
                 eloRating.estimated ? "world-elo" : "",
               ].filter(Boolean),
             },
             limitations: [
-              recent.sampleSize < 5 ? "最近五場樣本不足，部分攻防資料為估算" : "",
+              tournament.played === 0 ? "本屆尚無比賽數據，改用排名 / Elo / 新聞資料輔助估算" : "",
               fifaRanking.estimated ? "FIFA Ranking 使用 seed 或手動維護資料" : "",
               eloRating.estimated ? "World Football Elo 使用 seed 或解析失敗後估算" : "",
             ].filter(Boolean),
@@ -136,7 +178,7 @@ export async function getTeamStats(fixtures) {
       sourceStatuses: [
         ...sourceStatuses,
         buildSourceStatus({
-          source: "fixtures-derived team form",
+          source: "本屆賽事數據",
           ok: completedFixtures.length > 0,
           count: completedFixtures.length,
         }),

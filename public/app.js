@@ -22,12 +22,12 @@ const tabLabels = {
 };
 
 const scoreLabels = {
-  recentFive: ["近期五場", 30],
-  bettingOdds: ["Betting Odds", 20],
-  worldElo: ["World Football Elo", 20],
-  fifaRanking: ["FIFA Ranking", 10],
-  sentiment: ["新聞情緒", 10],
-  homeAway: ["主客場", 10],
+  tournamentPerformance: ["本屆賽事表現", 35],
+  tournamentAttack: ["本屆攻擊效率", 20],
+  tournamentDefense: ["本屆防守穩定度", 15],
+  rankingElo: ["Elo / 世界排名", 15],
+  sentiment: ["新聞與陣容情緒", 10],
+  bettingOdds: ["盤口資料", 5],
 };
 
 let predictions = [];
@@ -100,17 +100,18 @@ function formatDateTime(value) {
 }
 
 function renderLiveStatus(data) {
+  const health = data.dataLayer?.sourceHealth || {};
+  const statusRows = [
+    health.fixtures === "updated" ? "✅ 賽程已更新" : "⚠️ 賽程未取得",
+    health.news === "updated" ? "✅ 新聞已更新" : "⚠️ 新聞未取得",
+    health.odds === "updated" ? "✅ 盤口已更新" : "⚠️ 盤口未取得",
+  ];
   const isLive = Boolean(data.liveData?.enabled);
-  const fallbackMessage = data.dataLayer?.fallbackMessage;
-  const sources = data.dataLayer?.sourceStatuses
-    ? Object.entries(data.dataLayer.sourceStatuses)
-        .map(([key, statuses]) => `${key}: ${statuses.map((status) => `${status.source}${status.ok ? "" : " 未取得"}`).join(" / ")}`)
-        .join("；")
-    : "";
   liveStatus.classList.toggle("is-live", isLive);
-  liveStatus.innerHTML = isLive
-    ? `<strong>即時資料層</strong><span>${data.liveData.provider} 更新：${formatDateTime(data.liveData.fetchedAt)}，快取至：${formatDateTime(data.liveData.expiresAt)}。${sources}</span>`
-    : `<strong>Fallback 模擬資料</strong><span>${fallbackMessage || data.liveData?.fallbackReason || "目前資料來源暫時無法取得，即時資料已切換為模擬資料"}。${sources}</span>`;
+  liveStatus.innerHTML = `
+    <strong>${isLive ? "資料狀態" : "Fallback 模擬資料"}</strong>
+    <span>${statusRows.join("　")} · 更新 ${formatDateTime(data.liveData?.fetchedAt)}</span>
+  `;
 }
 
 function renderDebugPanel(data) {
@@ -242,13 +243,17 @@ async function loadMatchNews(match, panel, button) {
 }
 
 function createDataGrid(match) {
+  const home = match.tournamentStats.home;
+  const away = match.tournamentStats.away;
   const items = [
-    ["世界排名 / Elo / 市場觀察", match.marketView],
-    ["近期戰績", `${match.homeTeam}: ${match.recentForm.home}<br>${match.awayTeam}: ${match.recentForm.away}`],
-    ["進球 / 失球", `${match.homeTeam}: ${match.goals.homeFor}/${match.goals.homeAgainst}<br>${match.awayTeam}: ${match.goals.awayFor}/${match.goals.awayAgainst}`],
-    ["xG / xGA", `${match.homeTeam}: ${match.expectedGoals.homeXG}/${match.expectedGoals.homeXGA}<br>${match.awayTeam}: ${match.expectedGoals.awayXG}/${match.expectedGoals.awayXGA}`],
-    ["傷兵或停賽", `${match.homeTeam}: ${match.injuriesSuspensions.home}<br>${match.awayTeam}: ${match.injuriesSuspensions.away}`],
-    ["專家預測摘要", match.expertPrediction],
+    ["本屆戰績", `${match.homeTeam}: ${home.formText}<br>${match.awayTeam}: ${away.formText}`],
+    ["本屆進球 / 失球", `${match.homeTeam}: ${home.goalsFor}/${home.goalsAgainst}，淨勝 ${home.goalDifference}<br>${match.awayTeam}: ${away.goalsFor}/${away.goalsAgainst}，淨勝 ${away.goalDifference}`],
+    ["場均進球 / 場均失球", `${match.homeTeam}: ${home.goalsForPerGame}/${home.goalsAgainstPerGame}<br>${match.awayTeam}: ${away.goalsForPerGame}/${away.goalsAgainstPerGame}`],
+    ["本屆階段 / 狀態", `${match.homeTeam}: ${home.phase}，${home.advancementStatus}<br>${match.awayTeam}: ${away.phase}，${away.advancementStatus}`],
+    ["小組排名 / 對戰強度", `${match.homeTeam}: ${home.groupRank}，${home.strengthContext}<br>${match.awayTeam}: ${away.groupRank}，${away.strengthContext}`],
+    ["Elo / 世界排名", match.marketView],
+    ["新聞摘要", match.expertPrediction],
+    ["盤口狀態", match.marketView.includes("沒有可用盤口") ? "目前沒有可用盤口資料" : match.marketView],
     ["AI 綜合分析", `${match.aiAnalysis}<br>analysisMode: ${match.analysisMode || "rule-based"}`],
   ];
 
@@ -278,19 +283,16 @@ function renderMatches() {
     node.querySelector(".risk-pill").textContent = `風險 ${match.riskLevel}`;
     node.querySelector(".risk-pill").classList.add(getRiskClass(match.riskLevel));
     node.querySelector(".match-title").textContent = `${match.homeTeam} vs ${match.awayTeam}`;
-    node.querySelector(".total-score strong").textContent = match.totalScore;
+    const topWinProbability = Math.max(match.winProbability.home, match.winProbability.draw, match.winProbability.away);
+    node.querySelector(".total-score strong").textContent = `${topWinProbability}%`;
     node.querySelector(".predicted-score").textContent = match.predictedScore;
     node.querySelector(".score-prediction-list").innerHTML = createScorePredictions(match);
     node.querySelector(".probability-bars").innerHTML = createProbabilityRows(match);
-    node.querySelector(".recommendation").textContent = match.recommendation;
     node.querySelector(".confidence").textContent = `${match.confidence} (${match.confidenceScore})`;
+    node.querySelector(".risk-score").textContent = `${match.riskLevel} (${match.riskScore})`;
     node.querySelector(".v2-metrics").innerHTML = createV2Metrics(match);
     const estimationNotice = node.querySelector(".estimation-notice");
     estimationNotice.hidden = !match.hasEstimation;
-    const newsPanel = node.querySelector(".news-panel");
-    node.querySelector(".news-button").addEventListener("click", (event) => {
-      loadMatchNews(match, newsPanel, event.currentTarget);
-    });
     node.querySelector(".analysis-button").addEventListener("click", async (event) => {
       event.currentTarget.disabled = true;
       event.currentTarget.textContent = "更新中";
@@ -298,7 +300,7 @@ function renderMatches() {
       event.currentTarget.textContent = "更新分析";
       event.currentTarget.disabled = false;
     });
-    node.querySelector(".summary").textContent = match.summary;
+    node.querySelector(".summary").textContent = match.shortSummary || match.summary;
     node.querySelector(".reason-list").innerHTML = match.keyReasons.map((reason) => `<li>${reason}</li>`).join("");
     node.querySelector(".breakdown").innerHTML = createBreakdown(match);
     node.querySelector(".breakdown-summary").innerHTML = createBreakdownSummary(match);
