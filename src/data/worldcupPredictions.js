@@ -100,6 +100,49 @@ function getTaipeiDateWindow() {
   };
 }
 
+function formatTaipeiShortDateTime(value) {
+  const parts = new Intl.DateTimeFormat("zh-TW", {
+    timeZone: TAIWAN_TIME_ZONE,
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+    .formatToParts(new Date(value))
+    .reduce((result, part) => {
+      result[part.type] = part.value;
+      return result;
+    }, {});
+
+  const hour = Number(parts.hour);
+  const dayPart = hour < 6 ? "凌晨" : hour < 12 ? "早上" : hour < 18 ? "下午" : "晚上";
+  return `${parts.month}/${parts.day} ${dayPart} ${parts.hour}:${parts.minute}`;
+}
+
+function rebaseTaipeiDateTime(originalDate, dayOffset) {
+  const original = new Date(originalDate);
+  const targetDay = new Date(Date.now() + dayOffset * 24 * 60 * 60 * 1000);
+  const targetDate = formatTaipeiDate(targetDay);
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone: TAIWAN_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  })
+    .format(original)
+    .replace(/\u200e/g, "");
+
+  return `${targetDate}T${time}+08:00`;
+}
+
+function replaceSummaryDate(summary, date) {
+  const taipeiDate = formatTaipeiShortDateTime(date).slice(0, 5);
+  const normalized = summary.replace(/台灣時間 [0-9]{2}\/[0-9]{2}/g, `台灣時間 ${taipeiDate}`);
+  return normalized.replace(/同樣在台灣時間/g, "在台灣時間");
+}
+
 function normalizeProviderName(value) {
   return String(value || "").toLowerCase().replace(/[_\s]/g, "-");
 }
@@ -1240,17 +1283,45 @@ const verifiedTomorrowScheduleMatches = [
 
 const activeVerifiedMatches = [...verifiedTaiwanScheduleMatches, ...verifiedTomorrowScheduleMatches];
 
-const verifiedNewsByMatchId = Object.fromEntries(
-  activeVerifiedMatches.map((match) => [
-    match.id,
-    {
-      updatedAt: "2026-06-26T21:45:00+08:00",
-      headline: `${match.homeTeam} vs ${match.awayTeam} 賽前重點：${match.recommendation}`,
-      newsItems: match.keyReasons.slice(0, 3),
-      instantAnalysis: match.summary,
-    },
-  ]),
-);
+function getRollingFallbackMatches() {
+  return activeVerifiedMatches.map((match, index) => {
+    const dayOffset = match.categoryTags.includes("tomorrow") ? 1 : 0;
+    const date = rebaseTaipeiDateTime(match.date, dayOffset);
+    const categoryTags = new Set(match.categoryTags);
+
+    if (dayOffset === 0) {
+      categoryTags.delete("tomorrow");
+      categoryTags.add("today");
+    } else {
+      categoryTags.delete("today");
+      categoryTags.add("tomorrow");
+    }
+
+    return {
+      ...match,
+      id: `${match.id}-rolling-${formatTaipeiDate(new Date(date))}-${index}`,
+      date,
+      categoryTags: [...categoryTags],
+      summary: replaceSummaryDate(match.summary, date),
+      sources: [...new Set([...(match.sources || []), "fallback:rolling-taiwan-window"])],
+    };
+  });
+}
+
+function getFallbackNewsByMatchId(matches) {
+  const now = new Date().toISOString();
+  return Object.fromEntries(
+    matches.map((match) => [
+      match.id,
+      {
+        updatedAt: now,
+        headline: `${match.homeTeam} vs ${match.awayTeam} 賽前重點：${match.recommendation}`,
+        newsItems: match.keyReasons.slice(0, 3),
+        instantAnalysis: match.summary,
+      },
+    ]),
+  );
+}
 
 async function fetchLiveProviderData() {
   const provider = normalizeProviderName(SOURCE_MODE);
@@ -1294,6 +1365,7 @@ async function fetchLiveProviderData() {
 export async function getWorldCupPredictions() {
   let liveData = null;
   let liveError = null;
+  const fallbackMatches = getRollingFallbackMatches();
 
   try {
     liveData = SOURCE_MODE !== "mock" ? await fetchLiveProviderData() : null;
@@ -1324,14 +1396,16 @@ export async function getWorldCupPredictions() {
       weights,
     },
     providerPlaceholders,
-    matches: liveData?.matches || activeVerifiedMatches,
+    matches: liveData?.matches || fallbackMatches,
   };
 }
 
 export async function getMatchNews(matchId) {
   const liveMatches = liveScheduleCache?.data?.matches || [];
-  const match = [...liveMatches, ...activeVerifiedMatches].find((item) => item.id === matchId);
-  const news = verifiedNewsByMatchId[matchId];
+  const fallbackMatches = getRollingFallbackMatches();
+  const fallbackNewsByMatchId = getFallbackNewsByMatchId(fallbackMatches);
+  const match = [...liveMatches, ...fallbackMatches].find((item) => item.id === matchId);
+  const news = fallbackNewsByMatchId[matchId];
 
   if (!match || !news) {
     return {
