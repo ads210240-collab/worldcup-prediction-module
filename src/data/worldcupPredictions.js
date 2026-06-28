@@ -1,32 +1,35 @@
-const SOURCE_MODE = process.env.FOOTBALL_DATA_PROVIDER || (process.env.API_FOOTBALL_KEY ? "api-football" : "mock");
+const SOURCE_MODE = normalizeProviderName(process.env.FOOTBALL_DATA_PROVIDER || "free");
 const TAIWAN_TIME_ZONE = "Asia/Taipei";
 const LIVE_CACHE_TTL_MS = 9.5 * 60 * 60 * 1000;
-const API_FOOTBALL_BASE_URL = process.env.API_FOOTBALL_BASE_URL || "https://v3.football.api-sports.io";
-const API_FOOTBALL_LEAGUE_ID = process.env.API_FOOTBALL_LEAGUE_ID || "1";
-const API_FOOTBALL_SEASON = process.env.API_FOOTBALL_SEASON || "2026";
+const FOOTBALL_DATA_BASE_URL = process.env.FOOTBALL_DATA_BASE_URL || "https://api.football-data.org/v4";
+const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY || "";
+const FOOTBALL_SEASON = process.env.FOOTBALL_SEASON || "2026";
+const OPENFOOTBALL_FIXTURES_URL =
+  process.env.OPENFOOTBALL_FIXTURES_URL ||
+  "https://raw.githubusercontent.com/openfootball/worldcup/master/2026--canada-mexico-usa/worldcup.json";
 
 let liveScheduleCache = null;
 
 const providerPlaceholders = {
-  sportmonks: {
-    enabled: Boolean(process.env.SPORTMONKS_API_KEY),
-    envKey: "SPORTMONKS_API_KEY",
-    note: "Reserved for fixtures, team stats, injuries, xG, standings and odds enrichment.",
+  footballData: {
+    enabled: SOURCE_MODE === "free" || SOURCE_MODE === "football-data",
+    envKey: "FOOTBALL_DATA_API_KEY",
+    note: "Optional free football-data.org token. Used for fixtures when available; the app still works without it.",
   },
-  apiFootball: {
-    enabled: Boolean(process.env.API_FOOTBALL_KEY),
-    envKey: "API_FOOTBALL_KEY",
-    note: "Reserved for fixtures, odds, lineups, form, head-to-head and injuries.",
+  openFootball: {
+    enabled: true,
+    envKey: "OPENFOOTBALL_FIXTURES_URL",
+    note: "Optional static JSON fixture source from openfootball / football.json style data.",
   },
-  highlightly: {
-    enabled: Boolean(process.env.HIGHLIGHTLY_API_KEY),
-    envKey: "HIGHLIGHTLY_API_KEY",
-    note: "Reserved for match previews, highlights and editorial signals.",
+  fifaRanking: {
+    enabled: true,
+    envKey: "manual",
+    note: "Manual FIFA ranking / Elo assumptions are used as a free ranking signal when live ranking data is unavailable.",
   },
-  oddsApi: {
-    enabled: Boolean(process.env.ODDS_API_KEY),
-    envKey: "ODDS_API_KEY",
-    note: "Reserved for bookmaker consensus, market movement and totals markets.",
+  mockWorldCupPredictions: {
+    enabled: true,
+    envKey: "none",
+    note: "Always available fallback to avoid blank screens on Render without API keys.",
   },
 };
 
@@ -34,9 +37,9 @@ const scheduleIntegrationPlan = {
   supportsLiveScheduleRefresh: true,
   realtimeScoresEnabled: false,
   refreshTargets: ["fixtures", "kickoff_time", "venue", "team_pairing", "status_without_score"],
-  recommendedProviders: ["Sportmonks", "API-Football", "Highlightly"],
+  recommendedProviders: ["football-data.org", "openfootball / football.json", "Wikipedia / FIFA Ranking", "mockWorldCupPredictions"],
   maxCacheHours: 9.5,
-  note: "API-Football schedule refresh is implemented. The app updates fixtures without showing live scores, then falls back to mock data if no API key or provider data is available.",
+  note: "Free provider mode is implemented. The app tries football-data.org and openfootball-style static fixtures, then falls back to mock data without requiring paid API keys.",
 };
 
 const weights = {
@@ -53,10 +56,27 @@ function calculateTotalScore(scoreBreakdown) {
   return Object.values(scoreBreakdown).reduce((sum, value) => sum + value, 0);
 }
 
+function hasEstimatedSource(sources = []) {
+  return sources.some((source) => /mock|fallback|estimated|manual|openfootball/i.test(source));
+}
+
 function buildMatch(match) {
   const totalScore = calculateTotalScore(match.scoreBreakdown);
   const scorePredictions = [...match.scorePredictions].sort((a, b) => b.probability - a.probability);
-  return { ...match, scorePredictions, totalScore };
+  const sources = match.sources || ["fallback:mockWorldCupPredictions"];
+  const needsEstimateNote = hasEstimatedSource(sources);
+  const summary =
+    needsEstimateNote && !match.summary.includes("部分資料為模擬估算")
+      ? `${match.summary} 部分資料為模擬估算，正式研究時仍需搭配賽前名單、最新新聞與官方賽程校正。`
+      : match.summary;
+
+  return {
+    ...match,
+    scorePredictions,
+    totalScore,
+    summary,
+    sources: needsEstimateNote && !sources.includes("notice:partial-estimated-data") ? [...sources, "notice:partial-estimated-data"] : sources,
+  };
 }
 
 function formatTaipeiDate(date) {
@@ -99,47 +119,82 @@ function inferMatchTags(dateValue, index, probability, riskLevel) {
   return tags.length ? tags : ["hot"];
 }
 
-function buildLivePlaceholderMatch(fixture, index) {
-  const fixtureInfo = fixture.fixture || {};
-  const teams = fixture.teams || {};
-  const homeTeam = teams.home?.name || "主隊未定";
-  const awayTeam = teams.away?.name || "客隊未定";
-  const date = fixtureInfo.date || new Date().toISOString();
-  const status = fixtureInfo.status?.long || fixtureInfo.status?.short || "Scheduled";
-  const homeLean = index % 3 === 0;
-  const drawLean = index % 3 === 1;
-  const homeProbability = homeLean ? 43 : drawLean ? 34 : 31;
-  const drawProbability = drawLean ? 33 : 28;
-  const awayProbability = 100 - homeProbability - drawProbability;
+function getTeamName(team) {
+  return team?.name || team?.shortName || team?.tla || team?.team || "待定";
+}
+
+function getRankingSeed(teamName) {
+  const rankingSeeds = {
+    阿根廷: 4,
+    法國: 3,
+    巴西: 6,
+    英格蘭: 5,
+    西班牙: 2,
+    葡萄牙: 7,
+    比利時: 8,
+    德國: 11,
+    烏拉圭: 16,
+    日本: 19,
+    Senegal: 18,
+    France: 3,
+    England: 5,
+    Argentina: 4,
+    Spain: 2,
+    Portugal: 7,
+    Belgium: 8,
+    Germany: 11,
+    Japan: 19,
+    Brazil: 6,
+    Norway: 27,
+    "New Zealand": 96,
+  };
+
+  return rankingSeeds[teamName] || 48;
+}
+
+function buildFreeFixtureMatch(fixture, index, provider) {
+  const homeTeam = getTeamName(fixture.homeTeam || fixture.home || fixture.teams?.home);
+  const awayTeam = getTeamName(fixture.awayTeam || fixture.away || fixture.teams?.away);
+  const utcDate = fixture.utcDate || fixture.date || fixture.fixture?.date || fixture.kickoff || new Date().toISOString();
+  const status = fixture.status || fixture.fixture?.status?.short || "SCHEDULED";
+  const homeRank = getRankingSeed(homeTeam);
+  const awayRank = getRankingSeed(awayTeam);
+  const rankGap = awayRank - homeRank;
+  const homeProbability = Math.max(18, Math.min(66, Math.round(38 + rankGap * 0.35 + (index % 2 === 0 ? 2 : -1))));
+  const drawProbability = Math.max(22, Math.min(34, 30 - Math.round(Math.abs(rankGap) * 0.05)));
+  const awayProbability = Math.max(12, 100 - homeProbability - drawProbability);
   const favorite = homeProbability >= awayProbability ? homeTeam : awayTeam;
-  const riskLevel = Math.abs(homeProbability - awayProbability) <= 8 ? "高" : "中";
-  const predictedScore = drawLean ? "1-1" : homeLean ? "2-1" : "1-2";
+  const favoriteProbability = Math.max(homeProbability, awayProbability);
+  const drawLean = Math.abs(homeProbability - awayProbability) <= 8;
+  const riskLevel = drawLean ? "高" : favoriteProbability >= 55 ? "低" : "中";
+  const predictedScore = drawLean ? "1-1" : homeProbability > awayProbability ? "2-1" : "1-2";
+  const rankingScore = Math.max(7, Math.min(14, Math.round(10 + Math.abs(rankGap) * 0.08)));
 
   return buildMatch({
-    id: `api-football-${fixtureInfo.id || index}`,
-    date,
+    id: `${provider}-${fixture.id || fixture.fixture?.id || `${homeTeam}-${awayTeam}-${index}`}`.replace(/\s+/g, "-").toLowerCase(),
+    date: utcDate,
     homeTeam,
     awayTeam,
     predictedScore,
     scorePredictions: [
-      { score: predictedScore, probability: drawLean ? 30 : 32, note: "由即時賽程先產生的基礎預測，完整模型需串接賠率、傷停與新聞。" },
-      { score: "1-1", probability: drawLean ? 27 : 22, note: "資料不足時，和局保留為風險情境。" },
-      { score: homeLean ? "1-0" : "0-1", probability: 18, note: "若比賽節奏偏慢，低比分可能性上升。" },
+      { score: predictedScore, probability: drawLean ? 30 : 33, note: "由免費賽程、排名種子與保守攻防模型推估。" },
+      { score: "1-1", probability: drawLean ? 28 : 22, note: "資料不足時，和局保留為主要風險情境。" },
+      { score: homeProbability > awayProbability ? "1-0" : "0-1", probability: 18, note: "若比賽節奏偏慢，低比分可能性上升。" },
     ],
-    categoryTags: inferMatchTags(date, index, Math.max(homeProbability, awayProbability), riskLevel),
-    marketView: "已串接即時賽程；賠率市場信心需另外接 Odds API 或 API-Football odds 權限。",
+    categoryTags: inferMatchTags(utcDate, index, favoriteProbability, riskLevel),
+    marketView: `免費資料源已更新賽程；排名/Elo 以 ${homeTeam} #${homeRank}、${awayTeam} #${awayRank} 作為模型訊號，無付費賠率資料。`,
     recentForm: {
-      home: "即時賽程已更新；近期戰績需接 team statistics endpoint 後補強。",
-      away: "即時賽程已更新；近期戰績需接 team statistics endpoint 後補強。",
+      home: "免費賽程已更新；近期戰績以保守模型估算。",
+      away: "免費賽程已更新；近期戰績以保守模型估算。",
     },
     goals: { homeFor: 0, homeAgainst: 0, awayFor: 0, awayAgainst: 0 },
     expectedGoals: { homeXG: 0, homeXGA: 0, awayXG: 0, awayXGA: 0 },
     injuriesSuspensions: {
-      home: "尚未串接傷停 API，請以賽前名單更新為準。",
-      away: "尚未串接傷停 API，請以賽前名單更新為準。",
+      home: "免費模式未含完整傷停資料，請以賽前名單更新為準。",
+      away: "免費模式未含完整傷停資料，請以賽前名單更新為準。",
     },
-    expertPrediction: "目前使用即時賽程建立基礎分析；新聞/專家預測需接 Highlightly、Sportmonks News 或其他新聞 API。",
-    aiAnalysis: `${homeTeam} vs ${awayTeam} 已由 API-Football 即時賽程同步，狀態為 ${status}。目前不顯示即時比分；分析分數為資料不足時的保守模型。`,
+    expertPrediction: "目前使用免費賽程與排名/Elo 種子建立基礎分析；新聞情緒以模擬估算補足。",
+    aiAnalysis: `${homeTeam} vs ${awayTeam} 已由 ${provider} 免費資料源同步，狀態為 ${status}。目前不顯示即時比分；分析分數為資料不足時的保守模型。`,
     winProbability: { home: homeProbability, draw: drawProbability, away: awayProbability },
     recommendation: drawLean ? "保守觀望 / 和局風險" : `${favorite} 不敗`,
     confidence: Math.max(homeProbability, awayProbability) >= 54 ? "高" : "中",
@@ -148,71 +203,114 @@ function buildLivePlaceholderMatch(fixture, index) {
       form: 15,
       attack: 12,
       defense: 11,
-      odds: 6,
+      odds: rankingScore,
       squad: 6,
       headToHead: 2,
       sentiment: 5,
     },
     scoreBreakdownNotes: {
-      form: "目前只接賽程，近期狀態需等 team statistics provider 補齊。",
-      attack: "尚未接進球/xG endpoint，先用保守分數。",
-      defense: "尚未接失球/xGA endpoint，先用保守分數。",
-      odds: "尚未接 odds endpoint，市場信心不放大。",
-      squad: "尚未接傷停/停賽資料，陣容分保守。",
-      headToHead: "尚未接歷史對戰 endpoint。",
-      sentiment: "尚未接 10 小時內新聞情緒。",
+      form: "免費來源只提供賽程時，近期狀態先用中性保守分數。",
+      attack: "進球與 xG 若缺資料，先依排名種子與預測比分估算。",
+      defense: "失球與 xGA 若缺資料，先依對手強度估算。",
+      odds: "以世界排名 / Elo 種子取代付費市場訊號。",
+      squad: "未接完整傷停資料，因此陣容完整度保守。",
+      headToHead: "歷史對戰缺資料時只給低權重估算。",
+      sentiment: "新聞與網路情緒不足時採保守估算。",
     },
     summary:
-      `${homeTeam} vs ${awayTeam} 的賽程已由 API-Football 即時同步，開賽時間以台灣時間顯示。這版已解決手動更新賽程的問題，但目前只保證賽程來源是 API 更新，不包含即時比分。勝率、比分與分析仍是基礎保守模型，等後續接上賠率、傷停、新聞與 xG 後，才能達到完整的 10 小時內即時分析標準。`,
+      `${homeTeam} vs ${awayTeam} 的賽程已由免費資料源同步，開賽時間以台灣時間顯示。模型目前以近期狀態、攻防基礎、世界排名/Elo 種子與新聞情緒估算組成，較看好 ${favorite} 維持不敗走勢。可能比分區間落在 ${predictedScore}、1-1 或低比分一球差。需要注意的是，免費模式通常缺少完整傷停、xG 與賽前 10 小時內新聞，因此風險等級仍要保守看待，尤其排名接近或輪換消息未確認的場次。`,
     keyReasons: [
-      "賽程由 API-Football 即時 fixtures endpoint 回傳。",
-      "不顯示即時比分，避免偏離你的需求。",
-      "目前分析仍是保守模型，需補新聞/賠率/傷停 API 才能完整自動化。",
-      "若 API 失敗，系統會 fallback 到 2026 賽程 mock。",
+      "賽程由免費資料源回傳，不需要付費足球資料方案。",
+      "以世界排名 / Elo 種子取代付費賠率訊號。",
+      "不顯示即時比分，避免偏離賽程分析需求。",
+      "若免費資料源失敗，系統會 fallback 到 2026 mockWorldCupPredictions。",
     ],
-    sources: ["live:api-football-fixtures", `live:status:${status}`, "fallback:analysis-model"],
+    sources: [`free:${provider}`, `free:status:${status}`, "estimated:ranking-elo-model"],
   });
 }
 
-async function fetchApiFootballFixtures() {
-  if (!process.env.API_FOOTBALL_KEY) return null;
-
+async function fetchFootballDataFixtures() {
   const { from, to } = getTaipeiDateWindow();
-  const url = new URL("/fixtures", API_FOOTBALL_BASE_URL);
-  url.searchParams.set("league", API_FOOTBALL_LEAGUE_ID);
-  url.searchParams.set("season", API_FOOTBALL_SEASON);
-  url.searchParams.set("from", from);
-  url.searchParams.set("to", to);
-  url.searchParams.set("timezone", TAIWAN_TIME_ZONE);
+  const url = new URL("/competitions/WC/matches", FOOTBALL_DATA_BASE_URL);
+  url.searchParams.set("season", FOOTBALL_SEASON);
+  url.searchParams.set("dateFrom", from);
+  url.searchParams.set("dateTo", to);
 
-  const response = await fetch(url, {
-    headers: {
-      "x-apisports-key": process.env.API_FOOTBALL_KEY,
-    },
-  });
+  const headers = FOOTBALL_DATA_API_KEY ? { "X-Auth-Token": FOOTBALL_DATA_API_KEY } : {};
+  const response = await fetch(url, { headers });
 
   if (!response.ok) {
-    throw new Error(`API-Football fixtures failed: ${response.status}`);
+    throw new Error(`football-data.org fixtures failed: ${response.status}`);
   }
 
   const payload = await response.json();
-  const fixtures = Array.isArray(payload.response) ? payload.response : [];
+  const fixtures = Array.isArray(payload.matches) ? payload.matches : [];
   if (!fixtures.length) return null;
 
   const matches = fixtures
-    .sort((a, b) => new Date(a.fixture?.date || 0) - new Date(b.fixture?.date || 0))
-    .map((fixture, index) => buildLivePlaceholderMatch(fixture, index));
+    .sort((a, b) => new Date(a.utcDate || 0) - new Date(b.utcDate || 0))
+    .map((fixture, index) => buildFreeFixtureMatch(fixture, index, "football-data"));
 
   return {
-    provider: "api-football",
+    provider: "football-data.org",
     fetchedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + LIVE_CACHE_TTL_MS).toISOString(),
     query: {
-      league: API_FOOTBALL_LEAGUE_ID,
-      season: API_FOOTBALL_SEASON,
+      competition: "WC",
+      season: FOOTBALL_SEASON,
       from,
       to,
       timezone: TAIWAN_TIME_ZONE,
+      tokenConfigured: Boolean(FOOTBALL_DATA_API_KEY),
+    },
+    matches,
+  };
+}
+
+function normalizeOpenFootballFixtures(payload) {
+  const rounds = payload?.rounds || payload?.matches || payload?.games || [];
+  const fixtures = [];
+
+  if (Array.isArray(rounds) && rounds[0]?.matches) {
+    rounds.forEach((round) => {
+      round.matches.forEach((match) => fixtures.push(match));
+    });
+    return fixtures;
+  }
+
+  return Array.isArray(rounds) ? rounds : [];
+}
+
+async function fetchOpenFootballFixtures() {
+  const { from, to } = getTaipeiDateWindow();
+  const response = await fetch(OPENFOOTBALL_FIXTURES_URL);
+
+  if (!response.ok) {
+    throw new Error(`openfootball fixtures failed: ${response.status}`);
+  }
+
+  const payload = await response.json();
+  const fixtures = normalizeOpenFootballFixtures(payload).filter((fixture) => {
+    const dateValue = fixture.utcDate || fixture.date || fixture.fixture?.date || fixture.kickoff;
+    if (!dateValue) return false;
+    const matchDate = formatTaipeiDate(new Date(dateValue));
+    return matchDate >= from && matchDate <= to;
+  });
+
+  if (!fixtures.length) return null;
+
+  const matches = fixtures
+    .sort((a, b) => new Date(a.utcDate || a.date || 0) - new Date(b.utcDate || b.date || 0))
+    .map((fixture, index) => buildFreeFixtureMatch(fixture, index, "openfootball"));
+
+  return {
+    provider: "openfootball",
+    fetchedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + LIVE_CACHE_TTL_MS).toISOString(),
+    query: {
+      from,
+      to,
+      sourceUrl: OPENFOOTBALL_FIXTURES_URL,
     },
     matches,
   };
@@ -285,10 +383,10 @@ const mockMatches = [
     keyReasons: [
       "阿根廷近 5 場不敗，進攻端能持續製造高品質射門。",
       "法國右路防守深度受停賽影響，面對換位攻擊有風險。",
-      "主勝賠率略降但未明顯過熱，市場信心偏正向。",
+      "市場觀察略偏主隊但未明顯過熱，排名與模型訊號偏正向。",
       "若臨場讓分升太深，保守投資人可改看主勝不敗或觀望。",
     ],
-    sources: ["mock:sportmonks-fixtures", "mock:odds-consensus", "mock:expert-sentiment"],
+    sources: ["mock:free-fixture-estimate", "mock:ranking-elo", "mock:expert-sentiment"],
   }),
   buildMatch({
     id: "wc-2026-bra-eng",
@@ -354,12 +452,12 @@ const mockMatches = [
     summary:
       "巴西與英格蘭的差距不大，這使本場更像風險控管題，而不是單邊方向題。巴西有更高的單點突破上限，若邊鋒狀態恢復良好，能在英格蘭防線肋部創造空檔；但目前主力邊鋒剛復出，出場時間與連續衝刺品質都存在不確定。英格蘭近期失球控制較佳，定位球與反擊也具備偷分能力。賠率端沒有清楚一面倒訊號，代表市場對勝負分歧大，建議以和局、小球或保守觀望為主。",
     keyReasons: [
-      "兩隊勝率模型接近，單押勝負的性價比有限。",
+      "兩隊勝率模型接近，單一方向配置勝負的性價比有限。",
       "英格蘭防守穩定，但進攻創造力未必能壓制巴西。",
       "市場賠率分歧，沒有明確資金方向。",
-      "適合小球或觀望，不適合追高熱門敘事。",
+      "適合小球或觀望，不適合追逐過熱敘事。",
     ],
-    sources: ["mock:api-football-form", "mock:odds-consensus", "mock:sentiment-scan"],
+    sources: ["mock:free-form-estimate", "mock:ranking-elo", "mock:sentiment-scan"],
   }),
   buildMatch({
     id: "wc-2026-esp-usa",
@@ -417,7 +515,7 @@ const mockMatches = [
       form: "西班牙近 5 場 4 勝，控球與壓迫表現穩定。",
       attack: "xG 接近 2.0，代表持續創造高品質機會。",
       defense: "xGA 低於 1，美國反擊會被壓縮到較少回合。",
-      odds: "主勝低賠但符合實力差距，市場信心明確。",
+      odds: "排名/Elo 與實力差距支持主隊方向，訊號明確。",
       squad: "西班牙主力完整，美國主力中場停賽。",
       headToHead: "歷史樣本不多，僅作輔助參考。",
       sentiment: "專家預測與模型方向一致，主勝支持度高。",
@@ -427,10 +525,10 @@ const mockMatches = [
     keyReasons: [
       "西班牙控球壓制與前場逼搶能降低美國反擊頻率。",
       "美國主力中場停賽，出球穩定性下滑。",
-      "主勝賠率低但合理，市場信心與模型方向一致。",
-      "若賠率臨場跌破合理區間，建議降低投注比例。",
+      "排名/Elo 訊號合理，與模型方向一致。",
+      "若賠率臨場跌破合理區間，建議降低配置比例。",
     ],
-    sources: ["mock:sportmonks-team-stats", "mock:injury-feed", "mock:expert-consensus"],
+    sources: ["mock:free-team-stats-estimate", "mock:injury-feed", "mock:expert-consensus"],
   }),
   buildMatch({
     id: "wc-2026-ger-jpn",
@@ -490,7 +588,7 @@ const mockMatches = [
       defense: "中衛傷疑加上回防空間大，防守分明顯偏低。",
       odds: "主勝受熱，但模型沒有給到足夠單邊支撐。",
       squad: "日本陣容完整度較好，德國後防健康度有疑慮。",
-      headToHead: "過往對戰不足以支撐重倉主勝。",
+      headToHead: "過往對戰不足以支撐過度集中主勝。",
       sentiment: "網路與專家風向提醒德國有爆冷風險。",
     },
     summary:
@@ -499,9 +597,9 @@ const mockMatches = [
       "德國攻擊火力強，但防守穩定分偏低。",
       "日本陣容完整且轉換效率高，具備爆冷條件。",
       "主勝受市場追捧，賠率可能已反映過多主隊敘事。",
-      "更適合雙方進球或大球，不適合重倉主勝。",
+      "更適合雙方進球或大球，不適合過度集中主勝。",
     ],
-    sources: ["mock:api-football-h2h", "mock:odds-movement", "mock:expert-risk-note"],
+    sources: ["mock:free-h2h-estimate", "mock:ranking-elo", "mock:expert-risk-note"],
   }),
   buildMatch({
     id: "wc-2026-por-mar",
@@ -572,7 +670,7 @@ const mockMatches = [
       "總進球預期偏低，主勝小球邏輯一致。",
       "若葡萄牙臨場輪換過多，信心應降至中等。",
     ],
-    sources: ["mock:highlightly-preview", "mock:squad-availability", "mock:odds-consensus"],
+    sources: ["mock:free-preview-estimate", "mock:squad-availability", "mock:ranking-elo"],
   }),
 ];
 
@@ -597,7 +695,7 @@ const mockNewsByMatchId = {
       "市場勝負賠率拉鋸，和局與小球討論度偏高。",
     ],
     instantAnalysis:
-      "目前新聞訊號支持低比分拉鋸。巴西上限較高，但關鍵球員狀態不確定；英格蘭防守穩定但主動創造力普通。若要操作，和局、小球比單押勝負更符合風險報酬。",
+      "目前新聞訊號支持低比分拉鋸。巴西上限較高，但關鍵球員狀態不確定；英格蘭防守穩定但主動創造力普通。若要操作，和局、小球比單一方向配置勝負更符合風險報酬。",
   },
   "wc-2026-esp-usa": {
     updatedAt: "2026-06-26T20:20:00+08:00",
@@ -669,7 +767,7 @@ const verifiedTaiwanScheduleMatches = [
       form: "法國近期穩定性高於挪威，面對不同節奏都有調整能力。",
       attack: "法國前場創造力較高，挪威主要依賴高點與反擊。",
       defense: "法國防守保護較完整，挪威面對速度型攻擊較吃力。",
-      odds: "市場信心偏法國，但客勝仍需留意熱門風險。",
+      odds: "排名/Elo 偏法國，但客勝仍需留意熱門風險。",
       squad: "法國陣容深度較好，換人後仍能維持強度。",
       headToHead: "歷史對戰不是主要決策因素，僅小幅加權。",
       sentiment: "專家與網路情緒多數偏法國小勝。",
@@ -682,7 +780,7 @@ const verifiedTaiwanScheduleMatches = [
       "市場看法偏法國，與模型方向一致。",
       "若客勝賠率臨場過熱，可改走法國不敗。",
     ],
-    sources: ["verified:fixture-search-2026-06-26", "mock:odds-consensus", "mock:expert-sentiment"],
+    sources: ["verified:fixture-search-2026-06-26", "mock:ranking-elo", "mock:expert-sentiment"],
   }),
   buildMatch({
     id: "wc-2026-sen-irq",
@@ -757,7 +855,7 @@ const verifiedTaiwanScheduleMatches = [
       away: "前場輪換可用，但進攻端效率仍需觀察",
     },
     expertPrediction: "多數看法認為本場接近五五波，和局與小球比單邊勝負更合理。",
-    aiAnalysis: "兩隊差距不大，若沒有早段進球，比賽可能進入低節奏拉鋸。模型不建議重押勝負，保守觀望或小球更合適。",
+    aiAnalysis: "兩隊差距不大，若沒有早段進球，比賽可能進入低節奏拉鋸。模型不建議過度集中勝負，保守觀望或小球更合適。",
     winProbability: { home: 34, draw: 33, away: 33 },
     recommendation: "和局 / 小球",
     confidence: "中",
@@ -773,14 +871,14 @@ const verifiedTaiwanScheduleMatches = [
       sentiment: "網路情緒偏觀望，和局小球支持較多。",
     },
     summary:
-      "維德角 vs 沙烏地阿拉伯在台灣時間 06/27 早上 07:00 開踢。這場模型分數不高，因為兩隊攻擊火力與防守穩定都接近，市場也沒有清楚方向。維德角可依靠防守反擊與身體對抗製造威脅，沙烏地則可能有較多控球時間，但終結效率仍是問題。若早段沒有進球，和局與小球會變得更合理。這場比較適合保守觀望，不宜重倉單邊。",
+      "維德角 vs 沙烏地阿拉伯在台灣時間 06/27 早上 07:00 開踢。這場模型分數不高，因為兩隊攻擊火力與防守穩定都接近，市場也沒有清楚方向。維德角可依靠防守反擊與身體對抗製造威脅，沙烏地則可能有較多控球時間，但終結效率仍是問題。若早段沒有進球，和局與小球會變得更合理。這場比較適合保守觀望，不宜過度集中單邊。",
     keyReasons: [
       "雙方勝率接近，沒有明顯強勢方向。",
       "小球與和局比單邊勝負更符合模型。",
       "市場分歧代表風險較高。",
-      "適合保守觀望或小注小球。",
+      "適合保守觀望或保守觀察小球。",
     ],
-    sources: ["verified:fixture-search-2026-06-26", "mock:odds-consensus", "mock:risk-note"],
+    sources: ["verified:fixture-search-2026-06-26", "mock:ranking-elo", "mock:risk-note"],
   }),
   buildMatch({
     id: "wc-2026-uru-esp",
@@ -827,7 +925,7 @@ const verifiedTaiwanScheduleMatches = [
       "西班牙控球和 xGA 較佳，整體穩定度略優。",
       "烏拉圭反擊與身體對抗會拉高比賽波動。",
       "市場偏西班牙但不是無風險單邊。",
-      "西班牙不敗比單押客勝更保守。",
+      "西班牙不敗比單一方向配置客勝更保守。",
     ],
     sources: ["verified:fixture-search-2026-06-26", "mock:expert-consensus", "mock:market-watch"],
   }),
@@ -871,7 +969,7 @@ const verifiedTaiwanScheduleMatches = [
       sentiment: "預測情緒偏低比分與保守。",
     },
     summary:
-      "埃及 vs 伊朗在台灣時間 06/27 早上 10:00 開踢。這場模型看不出明顯勝負優勢，兩隊都偏防守紀律、低風險推進與定位球威脅。埃及可能有較高的個人突破上限，伊朗則在低位防守與定位球執行上具備穩定度。若早段沒有意外進球，比賽很可能長時間停留在僵持狀態。推薦以和局、小球或保守觀望為主，不適合重倉勝負盤。",
+      "埃及 vs 伊朗在台灣時間 06/27 早上 10:00 開踢。這場模型看不出明顯勝負優勢，兩隊都偏防守紀律、低風險推進與定位球威脅。埃及可能有較高的個人突破上限，伊朗則在低位防守與定位球執行上具備穩定度。若早段沒有意外進球，比賽很可能長時間停留在僵持狀態。推薦以和局、小球或保守觀望為主，不適合過度集中勝負盤。",
     keyReasons: [
       "兩隊防守分高於攻擊分。",
       "市場接近均勢，和局風險很高。",
@@ -983,7 +1081,7 @@ function createCompactVerifiedMatch({
       away: "未接正式傷停 API，需以賽前 10 小時內資料更新。",
     },
     expertPrediction: `${favorite} 在模型中略佔優勢，但仍需以最新賽前新聞、名單與市場變化校正。`,
-    aiAnalysis: `${favorite} 的勝率與綜合分數高於 ${underdog}，但目前仍屬 mock 分析，不應視為即時投注建議。`,
+    aiAnalysis: `${favorite} 的勝率與綜合分數高於 ${underdog}，但目前仍屬 mock 分析，不應視為即時配置建議。`,
     winProbability,
     recommendation,
     confidence,
@@ -993,7 +1091,7 @@ function createCompactVerifiedMatch({
       form: "依當屆賽程與近期表現方向估算，正式版需改接即時賽程/戰績 API。",
       attack: "以預測比分、近期攻擊印象與對戰強度估算。",
       defense: "以失球風險、對手攻擊壓力與比賽節奏估算。",
-      odds: "目前是市場情境 mock，正式版需串接 odds provider。",
+      odds: "目前以世界排名 / Elo 情境估算，免費來源缺資料時不使用付費賠率。",
       squad: "目前未接傷停 API，因此只給保守評估。",
       headToHead: "歷史對戰權重低，避免過度影響模型。",
       sentiment: "新聞與網路情緒需接即時來源後更新。",
@@ -1047,7 +1145,7 @@ const verifiedTomorrowScheduleMatches = [
     scoreBreakdown: { form: 18, attack: 14, defense: 12, odds: 8, squad: 7, headToHead: 2, sentiment: 7 },
     marketView: "市場接近均勢，和局與雙方進球更值得關注。",
     summary:
-      "克羅埃西亞 vs 迦納同樣在台灣時間 06/28 凌晨 02:00 開踢。這場勝率接近，克羅埃西亞可能有較好的中場控制，迦納則有速度和反擊爆點。模型沒有給出明確單邊方向，若投注思維過度偏向名氣隊伍，風險會升高。比較合理的方向是和局、雙方進球或保守觀望。",
+      "克羅埃西亞 vs 迦納同樣在台灣時間 06/28 凌晨 02:00 開踢。這場勝率接近，克羅埃西亞可能有較好的中場控制，迦納則有速度和反擊爆點。模型沒有給出明確單邊方向，若配置思維過度偏向名氣隊伍，風險會升高。比較合理的方向是和局、雙方進球或保守觀望。",
     keyReasons: ["勝率接近，單邊不乾淨。", "克羅埃西亞控場較好但速度防守有風險。", "迦納反擊具備爆冷條件。", "適合保守觀望或雙方進球。"],
   }),
   createCompactVerifiedMatch({
@@ -1069,7 +1167,7 @@ const verifiedTomorrowScheduleMatches = [
     scoreBreakdown: { form: 18, attack: 13, defense: 13, odds: 8, squad: 7, headToHead: 2, sentiment: 6 },
     marketView: "市場偏拉鋸，勝負盤不明朗。",
     summary:
-      "阿爾及利亞 vs 奧地利在台灣時間 06/28 早上 07:00 開踢。奧地利有較清楚的高位壓迫結構，阿爾及利亞則具備邊路突破和身體對抗。模型認為雙方差距有限，和局和小球會比單押勝負更符合風險管理。若臨場新聞顯示任一方主力前場缺陣，進球預期還會再下修。",
+      "阿爾及利亞 vs 奧地利在台灣時間 06/28 早上 07:00 開踢。奧地利有較清楚的高位壓迫結構，阿爾及利亞則具備邊路突破和身體對抗。模型認為雙方差距有限，和局和小球會比單一方向配置勝負更符合風險管理。若臨場新聞顯示任一方主力前場缺陣，進球預期還會再下修。",
     keyReasons: ["雙方勝率接近。", "進攻上限不算穩定。", "市場沒有清楚單邊訊號。", "小球與和局較合理。"],
   }),
   createCompactVerifiedMatch({
@@ -1111,9 +1209,9 @@ const verifiedTomorrowScheduleMatches = [
     confidence: "中",
     riskLevel: "中",
     scoreBreakdown: { form: 20, attack: 17, defense: 12, odds: 10, squad: 8, headToHead: 2, sentiment: 8 },
-    marketView: "市場略偏葡萄牙，但哥倫比亞反擊讓客勝不宜重倉。",
+    marketView: "市場略偏葡萄牙，但哥倫比亞反擊讓客勝不宜過度集中。",
     summary:
-      "哥倫比亞 vs 葡萄牙在台灣時間 06/28 早上 10:00 開踢，是明日熱門對戰之一。葡萄牙具備較完整的攻擊選擇與輪換深度，但哥倫比亞的反擊速度與身體對抗不容忽視。模型偏向葡萄牙不敗，而非重押客勝。若臨場葡萄牙賠率被追低，雙方進球或不敗方向更符合保守策略。",
+      "哥倫比亞 vs 葡萄牙在台灣時間 06/28 早上 10:00 開踢，是明日熱門對戰之一。葡萄牙具備較完整的攻擊選擇與輪換深度，但哥倫比亞的反擊速度與身體對抗不容忽視。模型偏向葡萄牙不敗，而非過度集中客勝。若臨場葡萄牙賠率被追低，雙方進球或不敗方向更符合保守策略。",
     keyReasons: ["葡萄牙攻擊選擇較多。", "哥倫比亞反擊具威脅。", "客勝有優勢但非低風險。", "葡萄牙不敗較穩。"],
   }),
   createCompactVerifiedMatch({
@@ -1135,7 +1233,7 @@ const verifiedTomorrowScheduleMatches = [
     scoreBreakdown: { form: 17, attack: 13, defense: 12, odds: 8, squad: 7, headToHead: 2, sentiment: 6 },
     marketView: "市場分歧大，和局與小球比勝負盤更乾淨。",
     summary:
-      "剛果民主共和國 vs 烏茲別克在台灣時間 06/28 早上 10:00 開踢。兩隊整體勝率非常接近，剛果民主共和國有身體對抗與定位球優勢，烏茲別克則可能在轉換與紀律性上取得平衡。這場模型明確列為風險提醒，不適合重倉單邊。和局、小球或保守觀望會更接近目前資料結論。",
+      "剛果民主共和國 vs 烏茲別克在台灣時間 06/28 早上 10:00 開踢。兩隊整體勝率非常接近，剛果民主共和國有身體對抗與定位球優勢，烏茲別克則可能在轉換與紀律性上取得平衡。這場模型明確列為風險提醒，不適合過度集中單邊。和局、小球或保守觀望會更接近目前資料結論。",
     keyReasons: ["勝率幾乎五五波。", "市場分歧明顯。", "小球方向較合理。", "適合列入冷門風險提醒。"],
   }),
 ];
@@ -1162,15 +1260,32 @@ async function fetchLiveProviderData() {
     return liveScheduleCache.data;
   }
 
-  if (provider === "api-football" || provider === "apifootball") {
-    const data = await fetchApiFootballFixtures();
-    if (!data) return null;
+  const providerAttempts =
+    provider === "football-data"
+      ? [fetchFootballDataFixtures, fetchOpenFootballFixtures]
+      : provider === "openfootball" || provider === "football-json"
+        ? [fetchOpenFootballFixtures, fetchFootballDataFixtures]
+        : [fetchFootballDataFixtures, fetchOpenFootballFixtures];
 
-    liveScheduleCache = {
-      data,
-      expiresAtMs: Date.now() + LIVE_CACHE_TTL_MS,
-    };
-    return data;
+  const errors = [];
+
+  for (const fetchProvider of providerAttempts) {
+    try {
+      const data = await fetchProvider();
+      if (!data) continue;
+
+      liveScheduleCache = {
+        data,
+        expiresAtMs: Date.now() + LIVE_CACHE_TTL_MS,
+      };
+      return data;
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "Unknown free provider error");
+    }
+  }
+
+  if (errors.length) {
+    throw new Error(errors.join(" | "));
   }
 
   return null;
@@ -1188,8 +1303,8 @@ export async function getWorldCupPredictions() {
 
   return {
     generatedAt: new Date().toISOString(),
-    sourceMode: liveData ? liveData.provider : "mock",
-    scheduleUpdateMode: liveData ? "provider" : "mock",
+    sourceMode: liveData ? liveData.provider : SOURCE_MODE === "mock" ? "mock" : "free-fallback",
+    scheduleUpdateMode: liveData ? "free-provider" : "mock",
     liveData: {
       enabled: Boolean(liveData),
       provider: liveData?.provider || null,
@@ -1197,7 +1312,11 @@ export async function getWorldCupPredictions() {
       expiresAt: liveData?.expiresAt || null,
       maxCacheHours: 9.5,
       error: liveError,
-      fallbackReason: liveData ? null : liveError || "No live provider data available. Using verified mock fixtures.",
+      fallbackReason: liveData
+        ? null
+        : liveError
+          ? "免費資料源暫時無法取得或沒有當日賽程，目前使用 mockWorldCupPredictions。"
+          : "No free provider data available. Using mockWorldCupPredictions.",
     },
     scheduleIntegrationPlan,
     model: {
@@ -1220,7 +1339,7 @@ export async function getMatchNews(matchId) {
       found: false,
       headline: "目前沒有這場賽事的新聞資料",
       newsItems: [],
-      instantAnalysis: "請確認 matchId 是否存在，或等待正式新聞 API 串接。",
+      instantAnalysis: "請確認 matchId 是否存在；免費模式下若沒有即時新聞，會使用 AI 摘要與模擬估算補足。",
       sources: ["mock:news-unavailable"],
     };
   }
@@ -1233,13 +1352,13 @@ export async function getMatchNews(matchId) {
     updatedAt: news?.updatedAt || new Date().toISOString(),
     headline: news?.headline || `${match.homeTeam} vs ${match.awayTeam} 即時賽程已同步`,
     newsItems: news?.newsItems || [
-      "賽程已由 live fixture provider 更新。",
-      "新聞與專家分析尚未串接 10 小時內新聞 API。",
-      "目前分析按鈕會使用賽程與基礎模型，後續可接 Highlightly 或 Sportmonks News。",
+      "賽程已由免費資料源或 mockWorldCupPredictions 更新。",
+      "新聞與專家分析若沒有免費來源，會使用 AI 摘要與保守估算。",
+      "目前分析按鈕會使用賽程、排名/Elo 種子與基礎模型更新。",
     ],
     instantAnalysis:
       news?.instantAnalysis ||
-      `${match.homeTeam} vs ${match.awayTeam} 已進入即時賽程模式。若要讓新聞與分析也符合 10 小時內更新，需要再設定新聞資料源 API Key。`,
-    sources: news ? ["mock:highlightly-news", "mock:expert-monitor", "mock:market-watch"] : ["live:fixture-provider", "pending:news-api"],
+      `${match.homeTeam} vs ${match.awayTeam} 已進入免費資料模式。若缺少即時新聞，摘要會清楚標註部分資料為模擬估算，避免把推估內容誤認為官方資訊。`,
+    sources: news ? ["mock:free-news-summary", "mock:expert-monitor", "estimated:sentiment"] : ["free:fixture-provider", "estimated:news-summary"],
   };
 }

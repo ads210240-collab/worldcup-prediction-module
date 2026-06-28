@@ -25,10 +25,10 @@ const scoreLabels = {
   form: ["近期狀態", 25],
   attack: ["攻擊火力", 20],
   defense: ["防守穩定", 15],
-  odds: ["賠率市場信心", 15],
+  odds: ["世界排名 / Elo", 15],
   squad: ["陣容完整度", 10],
   headToHead: ["歷史對戰", 5],
-  sentiment: ["專家/網路情緒", 10],
+  sentiment: ["新聞 / 網路情緒", 10],
 };
 
 let predictions = [];
@@ -103,8 +103,8 @@ function renderLiveStatus(data) {
   const isLive = Boolean(data.liveData?.enabled);
   liveStatus.classList.toggle("is-live", isLive);
   liveStatus.innerHTML = isLive
-    ? `<strong>Live API 賽程</strong><span>${data.liveData.provider} 更新：${formatDateTime(data.liveData.fetchedAt)}，快取至：${formatDateTime(data.liveData.expiresAt)}</span>`
-    : `<strong>Fallback 賽程</strong><span>${data.liveData?.fallbackReason || "未設定 API Key，目前使用內建 2026 賽程。"}</span>`;
+    ? `<strong>免費資料源賽程</strong><span>${data.liveData.provider} 更新：${formatDateTime(data.liveData.fetchedAt)}，快取至：${formatDateTime(data.liveData.expiresAt)}</span>`
+    : `<strong>Fallback 賽程</strong><span>${data.liveData?.fallbackReason || "目前使用 mockWorldCupPredictions，網站不需要 API Key 也能正常顯示。"}</span>`;
 }
 
 function getRiskClass(riskLevel) {
@@ -197,7 +197,7 @@ async function loadMatchNews(match, panel, button) {
 
 function createDataGrid(match) {
   const items = [
-    ["賠率 / 市場看法", match.marketView],
+    ["世界排名 / Elo / 市場觀察", match.marketView],
     ["近期戰績", `${match.homeTeam}: ${match.recentForm.home}<br>${match.awayTeam}: ${match.recentForm.away}`],
     ["進球 / 失球", `${match.homeTeam}: ${match.goals.homeFor}/${match.goals.homeAgainst}<br>${match.awayTeam}: ${match.goals.awayFor}/${match.goals.awayAgainst}`],
     ["xG / xGA", `${match.homeTeam}: ${match.expectedGoals.homeXG}/${match.expectedGoals.homeXGA}<br>${match.awayTeam}: ${match.expectedGoals.awayXG}/${match.expectedGoals.awayXGA}`],
