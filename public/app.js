@@ -40,6 +40,7 @@ const activeTabTitle = document.querySelector("#activeTabTitle");
 const activeTabHint = document.querySelector("#activeTabHint");
 const refreshButton = document.querySelector("#refreshButton");
 const template = document.querySelector("#matchCardTemplate");
+const liveStatus = document.querySelector("#liveStatus");
 
 function formatDate(value) {
   const parts = new Intl.DateTimeFormat("zh-TW", {
@@ -77,6 +78,33 @@ function createScorePredictions(match) {
       `,
     )
     .join("");
+}
+
+function formatDateTime(value) {
+  if (!value) return "尚未更新";
+  const parts = new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+    .formatToParts(new Date(value))
+    .reduce((result, part) => {
+      result[part.type] = part.value;
+      return result;
+    }, {});
+
+  return `${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
+}
+
+function renderLiveStatus(data) {
+  const isLive = Boolean(data.liveData?.enabled);
+  liveStatus.classList.toggle("is-live", isLive);
+  liveStatus.innerHTML = isLive
+    ? `<strong>Live API 賽程</strong><span>${data.liveData.provider} 更新：${formatDateTime(data.liveData.fetchedAt)}，快取至：${formatDateTime(data.liveData.expiresAt)}</span>`
+    : `<strong>Fallback 賽程</strong><span>${data.liveData?.fallbackReason || "未設定 API Key，目前使用內建 2026 賽程。"}</span>`;
 }
 
 function getRiskClass(riskLevel) {
@@ -241,6 +269,7 @@ async function loadPredictions() {
     if (!response.ok) throw new Error(`API failed: ${response.status}`);
     const data = await response.json();
     predictions = data.matches;
+    renderLiveStatus(data);
     renderMatches();
   } catch (error) {
     loadingState.textContent = "目前無法載入 API 資料，請確認本機 server 是否啟動。";

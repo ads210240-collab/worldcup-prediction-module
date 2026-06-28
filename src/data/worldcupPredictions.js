@@ -1,4 +1,11 @@
-const SOURCE_MODE = process.env.FOOTBALL_DATA_PROVIDER || "mock";
+const SOURCE_MODE = process.env.FOOTBALL_DATA_PROVIDER || (process.env.API_FOOTBALL_KEY ? "api-football" : "mock");
+const TAIWAN_TIME_ZONE = "Asia/Taipei";
+const LIVE_CACHE_TTL_MS = 9.5 * 60 * 60 * 1000;
+const API_FOOTBALL_BASE_URL = process.env.API_FOOTBALL_BASE_URL || "https://v3.football.api-sports.io";
+const API_FOOTBALL_LEAGUE_ID = process.env.API_FOOTBALL_LEAGUE_ID || "1";
+const API_FOOTBALL_SEASON = process.env.API_FOOTBALL_SEASON || "2026";
+
+let liveScheduleCache = null;
 
 const providerPlaceholders = {
   sportmonks: {
@@ -28,7 +35,8 @@ const scheduleIntegrationPlan = {
   realtimeScoresEnabled: false,
   refreshTargets: ["fixtures", "kickoff_time", "venue", "team_pairing", "status_without_score"],
   recommendedProviders: ["Sportmonks", "API-Football", "Highlightly"],
-  note: "This module is prepared to update schedules without consuming live score events. Add an API key and normalize fixtures into the matches schema.",
+  maxCacheHours: 9.5,
+  note: "API-Football schedule refresh is implemented. The app updates fixtures without showing live scores, then falls back to mock data if no API key or provider data is available.",
 };
 
 const weights = {
@@ -49,6 +57,165 @@ function buildMatch(match) {
   const totalScore = calculateTotalScore(match.scoreBreakdown);
   const scorePredictions = [...match.scorePredictions].sort((a, b) => b.probability - a.probability);
   return { ...match, scorePredictions, totalScore };
+}
+
+function formatTaipeiDate(date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TAIWAN_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function getTaipeiDateWindow() {
+  const now = new Date();
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  return {
+    from: formatTaipeiDate(now),
+    to: formatTaipeiDate(tomorrow),
+  };
+}
+
+function normalizeProviderName(value) {
+  return String(value || "").toLowerCase().replace(/[_\s]/g, "-");
+}
+
+function inferMatchTags(dateValue, index, probability, riskLevel) {
+  const today = formatTaipeiDate(new Date());
+  const tomorrow = formatTaipeiDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
+  const matchDate = formatTaipeiDate(new Date(dateValue));
+  const tags = [];
+
+  if (matchDate === today) tags.push("today");
+  if (matchDate === tomorrow) tags.push("tomorrow");
+  if (index < 6 || probability >= 42) tags.push("hot");
+  if (probability >= 54) tags.push("highConfidence");
+  if (riskLevel === "高" || probability <= 38) tags.push("upsetRisk");
+
+  return tags.length ? tags : ["hot"];
+}
+
+function buildLivePlaceholderMatch(fixture, index) {
+  const fixtureInfo = fixture.fixture || {};
+  const teams = fixture.teams || {};
+  const homeTeam = teams.home?.name || "主隊未定";
+  const awayTeam = teams.away?.name || "客隊未定";
+  const date = fixtureInfo.date || new Date().toISOString();
+  const status = fixtureInfo.status?.long || fixtureInfo.status?.short || "Scheduled";
+  const homeLean = index % 3 === 0;
+  const drawLean = index % 3 === 1;
+  const homeProbability = homeLean ? 43 : drawLean ? 34 : 31;
+  const drawProbability = drawLean ? 33 : 28;
+  const awayProbability = 100 - homeProbability - drawProbability;
+  const favorite = homeProbability >= awayProbability ? homeTeam : awayTeam;
+  const riskLevel = Math.abs(homeProbability - awayProbability) <= 8 ? "高" : "中";
+  const predictedScore = drawLean ? "1-1" : homeLean ? "2-1" : "1-2";
+
+  return buildMatch({
+    id: `api-football-${fixtureInfo.id || index}`,
+    date,
+    homeTeam,
+    awayTeam,
+    predictedScore,
+    scorePredictions: [
+      { score: predictedScore, probability: drawLean ? 30 : 32, note: "由即時賽程先產生的基礎預測，完整模型需串接賠率、傷停與新聞。" },
+      { score: "1-1", probability: drawLean ? 27 : 22, note: "資料不足時，和局保留為風險情境。" },
+      { score: homeLean ? "1-0" : "0-1", probability: 18, note: "若比賽節奏偏慢，低比分可能性上升。" },
+    ],
+    categoryTags: inferMatchTags(date, index, Math.max(homeProbability, awayProbability), riskLevel),
+    marketView: "已串接即時賽程；賠率市場信心需另外接 Odds API 或 API-Football odds 權限。",
+    recentForm: {
+      home: "即時賽程已更新；近期戰績需接 team statistics endpoint 後補強。",
+      away: "即時賽程已更新；近期戰績需接 team statistics endpoint 後補強。",
+    },
+    goals: { homeFor: 0, homeAgainst: 0, awayFor: 0, awayAgainst: 0 },
+    expectedGoals: { homeXG: 0, homeXGA: 0, awayXG: 0, awayXGA: 0 },
+    injuriesSuspensions: {
+      home: "尚未串接傷停 API，請以賽前名單更新為準。",
+      away: "尚未串接傷停 API，請以賽前名單更新為準。",
+    },
+    expertPrediction: "目前使用即時賽程建立基礎分析；新聞/專家預測需接 Highlightly、Sportmonks News 或其他新聞 API。",
+    aiAnalysis: `${homeTeam} vs ${awayTeam} 已由 API-Football 即時賽程同步，狀態為 ${status}。目前不顯示即時比分；分析分數為資料不足時的保守模型。`,
+    winProbability: { home: homeProbability, draw: drawProbability, away: awayProbability },
+    recommendation: drawLean ? "保守觀望 / 和局風險" : `${favorite} 不敗`,
+    confidence: Math.max(homeProbability, awayProbability) >= 54 ? "高" : "中",
+    riskLevel,
+    scoreBreakdown: {
+      form: 15,
+      attack: 12,
+      defense: 11,
+      odds: 6,
+      squad: 6,
+      headToHead: 2,
+      sentiment: 5,
+    },
+    scoreBreakdownNotes: {
+      form: "目前只接賽程，近期狀態需等 team statistics provider 補齊。",
+      attack: "尚未接進球/xG endpoint，先用保守分數。",
+      defense: "尚未接失球/xGA endpoint，先用保守分數。",
+      odds: "尚未接 odds endpoint，市場信心不放大。",
+      squad: "尚未接傷停/停賽資料，陣容分保守。",
+      headToHead: "尚未接歷史對戰 endpoint。",
+      sentiment: "尚未接 10 小時內新聞情緒。",
+    },
+    summary:
+      `${homeTeam} vs ${awayTeam} 的賽程已由 API-Football 即時同步，開賽時間以台灣時間顯示。這版已解決手動更新賽程的問題，但目前只保證賽程來源是 API 更新，不包含即時比分。勝率、比分與分析仍是基礎保守模型，等後續接上賠率、傷停、新聞與 xG 後，才能達到完整的 10 小時內即時分析標準。`,
+    keyReasons: [
+      "賽程由 API-Football 即時 fixtures endpoint 回傳。",
+      "不顯示即時比分，避免偏離你的需求。",
+      "目前分析仍是保守模型，需補新聞/賠率/傷停 API 才能完整自動化。",
+      "若 API 失敗，系統會 fallback 到 2026 賽程 mock。",
+    ],
+    sources: ["live:api-football-fixtures", `live:status:${status}`, "fallback:analysis-model"],
+  });
+}
+
+async function fetchApiFootballFixtures() {
+  if (!process.env.API_FOOTBALL_KEY) return null;
+
+  const { from, to } = getTaipeiDateWindow();
+  const url = new URL("/fixtures", API_FOOTBALL_BASE_URL);
+  url.searchParams.set("league", API_FOOTBALL_LEAGUE_ID);
+  url.searchParams.set("season", API_FOOTBALL_SEASON);
+  url.searchParams.set("from", from);
+  url.searchParams.set("to", to);
+  url.searchParams.set("timezone", TAIWAN_TIME_ZONE);
+
+  const response = await fetch(url, {
+    headers: {
+      "x-apisports-key": process.env.API_FOOTBALL_KEY,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`API-Football fixtures failed: ${response.status}`);
+  }
+
+  const payload = await response.json();
+  const fixtures = Array.isArray(payload.response) ? payload.response : [];
+  if (!fixtures.length) return null;
+
+  const matches = fixtures
+    .sort((a, b) => new Date(a.fixture?.date || 0) - new Date(b.fixture?.date || 0))
+    .map((fixture, index) => buildLivePlaceholderMatch(fixture, index));
+
+  return {
+    provider: "api-football",
+    fetchedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + LIVE_CACHE_TTL_MS).toISOString(),
+    query: {
+      league: API_FOOTBALL_LEAGUE_ID,
+      season: API_FOOTBALL_SEASON,
+      from,
+      to,
+      timezone: TAIWAN_TIME_ZONE,
+    },
+    matches,
+  };
 }
 
 const mockMatches = [
@@ -988,20 +1155,50 @@ const verifiedNewsByMatchId = Object.fromEntries(
 );
 
 async function fetchLiveProviderData() {
-  // Future integration point:
-  // 1. Select provider by FOOTBALL_DATA_PROVIDER.
-  // 2. Read the matching API key from providerPlaceholders.
-  // 3. Normalize fixtures, odds, injuries, xG and sentiment into the response schema below.
-  // 4. Reuse weights to generate totalScore and scoreBreakdown consistently.
+  const provider = normalizeProviderName(SOURCE_MODE);
+  if (provider === "mock") return null;
+
+  if (liveScheduleCache && Date.now() < liveScheduleCache.expiresAtMs) {
+    return liveScheduleCache.data;
+  }
+
+  if (provider === "api-football" || provider === "apifootball") {
+    const data = await fetchApiFootballFixtures();
+    if (!data) return null;
+
+    liveScheduleCache = {
+      data,
+      expiresAtMs: Date.now() + LIVE_CACHE_TTL_MS,
+    };
+    return data;
+  }
+
   return null;
 }
 
 export async function getWorldCupPredictions() {
-  const liveData = SOURCE_MODE !== "mock" ? await fetchLiveProviderData() : null;
+  let liveData = null;
+  let liveError = null;
+
+  try {
+    liveData = SOURCE_MODE !== "mock" ? await fetchLiveProviderData() : null;
+  } catch (error) {
+    liveError = error instanceof Error ? error.message : "Unknown live provider error";
+  }
+
   return {
     generatedAt: new Date().toISOString(),
-    sourceMode: liveData ? SOURCE_MODE : "mock",
+    sourceMode: liveData ? liveData.provider : "mock",
     scheduleUpdateMode: liveData ? "provider" : "mock",
+    liveData: {
+      enabled: Boolean(liveData),
+      provider: liveData?.provider || null,
+      fetchedAt: liveData?.fetchedAt || null,
+      expiresAt: liveData?.expiresAt || null,
+      maxCacheHours: 9.5,
+      error: liveError,
+      fallbackReason: liveData ? null : liveError || "No live provider data available. Using verified mock fixtures.",
+    },
     scheduleIntegrationPlan,
     model: {
       total: 100,
@@ -1013,7 +1210,8 @@ export async function getWorldCupPredictions() {
 }
 
 export async function getMatchNews(matchId) {
-  const match = activeVerifiedMatches.find((item) => item.id === matchId);
+  const liveMatches = liveScheduleCache?.data?.matches || [];
+  const match = [...liveMatches, ...activeVerifiedMatches].find((item) => item.id === matchId);
   const news = verifiedNewsByMatchId[matchId];
 
   if (!match || !news) {
@@ -1032,7 +1230,16 @@ export async function getMatchNews(matchId) {
     found: true,
     homeTeam: match.homeTeam,
     awayTeam: match.awayTeam,
-    ...news,
-    sources: ["mock:highlightly-news", "mock:expert-monitor", "mock:market-watch"],
+    updatedAt: news?.updatedAt || new Date().toISOString(),
+    headline: news?.headline || `${match.homeTeam} vs ${match.awayTeam} 即時賽程已同步`,
+    newsItems: news?.newsItems || [
+      "賽程已由 live fixture provider 更新。",
+      "新聞與專家分析尚未串接 10 小時內新聞 API。",
+      "目前分析按鈕會使用賽程與基礎模型，後續可接 Highlightly 或 Sportmonks News。",
+    ],
+    instantAnalysis:
+      news?.instantAnalysis ||
+      `${match.homeTeam} vs ${match.awayTeam} 已進入即時賽程模式。若要讓新聞與分析也符合 10 小時內更新，需要再設定新聞資料源 API Key。`,
+    sources: news ? ["mock:highlightly-news", "mock:expert-monitor", "mock:market-watch"] : ["live:fixture-provider", "pending:news-api"],
   };
 }
