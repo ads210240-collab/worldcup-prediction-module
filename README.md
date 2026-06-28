@@ -1,32 +1,127 @@
 # 世足分析預測
 
-免費可部署的世足賽事分析預測模組。網站會優先嘗試免費資料源，抓不到資料時自動使用 `mockWorldCupPredictions`，因此 Render 沒有設定任何足球 API Key 也能正常啟動。
+可部署的足球賽事分析平台。後端資料層已重構為獨立 services，會優先抓取免費/公開資料來源；只有當所有賽程來源都失敗或沒有資料時，才切換到 `mockWorldCupPredictions`。
 
-## 功能
+## API
 
 - `GET /api/worldcup/predictions`
 - `GET /api/worldcup/news?matchId=...`
-- 世足預測 tabs：今日賽事、明日賽事、熱門對戰、高信心推薦、冷門風險提醒
-- 每場賽事顯示台灣時間、預測比分、三組比分機率、勝率條、推薦方向、信心等級、風險等級、AI 摘要分析
-- 展開更多可查看評分拆解、資料欄位與資料來源標籤
-- 免費來源優先：football-data.org、openfootball / football.json style static JSON
-- fallback 來源：內建 `mockWorldCupPredictions`
 
-## 評分模型
+回傳格式維持前端合約，包含 `matches[].winProbability`、`recommendation`、`confidence`、`riskLevel`、`scoreBreakdown`、`summary`、`keyReasons`、`sources`。
 
-總分 100：
+## Data Layer 架構
 
-- 近期狀態 25%
-- 攻擊火力 20%
-- 防守穩定 15%
-- 世界排名 / Elo 15%
-- 陣容完整度 10%
-- 歷史對戰 5%
-- 新聞 / 網路情緒 10%
+```text
+src/services/
+  cacheService.js
+  fixturesService.js
+  teamStatsService.js
+  newsService.js
+  oddsService.js
+  predictionEngine.js
+```
 
-API 回傳格式仍保留原本的 `scoreBreakdown.odds` 欄位名稱，以維持前端合約相容；UI 會顯示為「世界排名 / Elo」。
+### 1. fixturesService
 
-若免費來源缺少真實戰績、傷停、xG 或新聞資料，系統會使用合理 fallback 值，並在 `sources` 或摘要中標註「部分資料為模擬估算」。
+用途：抓取今日、明日、已結束、即將開始比賽。
+
+目前來源順序：
+
+1. football-data.org
+2. ESPN public scoreboard
+3. openfootball / football.json style static JSON
+4. mockWorldCupPredictions，只有全部失敗才用
+
+快取：30 分鐘。
+
+### 2. teamStatsService
+
+用途：依 fixtures 計算最近戰績、主客場、進球、失球，並加入手動 FIFA Ranking / Elo seed。
+
+快取：6 小時。
+
+限制：免費來源若沒有完整歷史賽事，只能用已抓到的已結束比賽與 ranking seed 估算。
+
+### 3. newsService
+
+用途：抓取最近 24 小時足球新聞。
+
+目前來源：
+
+- ESPN RSS
+- BBC Sport RSS
+- Goal.com RSS
+- Yahoo Sports RSS
+- Google News RSS
+
+快取：30 分鐘。
+
+限制：RSS 通常只提供標題與摘要，不保證完整文章內容。
+
+### 4. oddsService
+
+用途：抓取主勝、和局、客勝。
+
+目前來源：
+
+- The Odds API，使用免費額度，但需要 `THE_ODDS_API_KEY`
+
+快取：15 分鐘。
+
+若沒有 key 或沒有盤口資料，API 不會失敗，會回：
+
+```text
+目前沒有可用盤口資料
+```
+
+### 5. predictionEngine
+
+用途：即時計算：
+
+- 勝率
+- 三組預測比分
+- AI 信心
+- 風險評級
+- AI 摘要
+
+摘要根據：
+
+- 最近戰績
+- 攻防能力
+- 世界排名 / Elo
+- 最近 24 小時新聞
+- 市場盤口
+
+## 快取策略
+
+- 賽程：30 分鐘
+- 新聞：30 分鐘
+- 盤口：15 分鐘
+- 球隊資料：6 小時
+
+## 環境變數
+
+不設定任何 key 也能啟動，但資料源不足時會顯示 fallback 警示。
+
+```text
+FOOTBALL_DATA_PROVIDER=free
+FOOTBALL_DATA_API_KEY=
+FOOTBALL_SEASON=2026
+OPENFOOTBALL_FIXTURES_URL=
+ESPN_SOCCER_LEAGUE=fifa.world
+THE_ODDS_API_KEY=
+ODDS_SPORT_KEY=soccer_fifa_world_cup
+```
+
+新聞 RSS 可選覆蓋：
+
+```text
+ESPN_SOCCER_RSS_URL=https://www.espn.com/espn/rss/soccer/news
+BBC_SPORT_RSS_URL=https://feeds.bbci.co.uk/sport/football/rss.xml
+GOAL_RSS_URL=https://www.goal.com/feeds/en/news
+YAHOO_SPORTS_RSS_URL=https://sports.yahoo.com/soccer/rss.xml
+GOOGLE_NEWS_RSS_URL=https://news.google.com/rss/search?q=football%20world%20cup%20when:1d&hl=en-US&gl=US&ceid=US:en
+```
 
 ## 本機啟動
 
@@ -41,73 +136,44 @@ npm start
 http://127.0.0.1:5173
 ```
 
-如果 5173 被占用，server 會自動嘗試下一個 port。
-
-## 環境變數
-
-可參考 `.env.example`：
-
-```text
-FOOTBALL_DATA_PROVIDER=free
-FOOTBALL_DATA_API_KEY=
-FOOTBALL_SEASON=2026
-OPENFOOTBALL_FIXTURES_URL=
-```
-
-### 免費模式
-
-不設定任何環境變數也能跑。預設 `FOOTBALL_DATA_PROVIDER=free`，server 會依序嘗試：
-
-1. football-data.org World Cup matches
-2. openfootball / football.json style static JSON
-3. `mockWorldCupPredictions`
-
-### football-data.org API Key
-
-`FOOTBALL_DATA_API_KEY` 是可選欄位。若你有 football-data.org 免費 API Key，可以填入：
-
-```text
-FOOTBALL_DATA_PROVIDER=free
-FOOTBALL_DATA_API_KEY=你的 football-data.org key
-FOOTBALL_SEASON=2026
-```
-
-沒有 key、key 失效、免費方案沒有 World Cup 資料，或來源暫時無資料時，系統會自動 fallback 到 mock data，不會讓畫面空白。
-
-### openfootball / football.json
-
-若你有自己的靜態賽程 JSON，可以設定：
-
-```text
-OPENFOOTBALL_FIXTURES_URL=https://example.com/worldcup-2026.json
-```
-
-支援常見欄位如 `matches`、`rounds[].matches`、`homeTeam`、`awayTeam`、`date`、`utcDate`。
-
 ## Render 部署
-
-Render 設定：
 
 - Build Command: `npm install`
 - Start Command: `npm start`
 
-Environment Variables 可以完全不填，網站仍會正常顯示 fallback 賽程。
-
-建議可填：
+Environment Variables 可先不填。若要盤口，加入：
 
 ```text
-FOOTBALL_DATA_PROVIDER=free
-FOOTBALL_SEASON=2026
+THE_ODDS_API_KEY=你的 The Odds API key
 ```
 
-如果有 football-data.org 免費 key，再加：
+若 football-data.org 可用，加入：
 
 ```text
 FOOTBALL_DATA_API_KEY=你的 football-data.org key
+FOOTBALL_SEASON=2026
 ```
 
-修改環境變數後，請在 Render 按 `Manual Deploy` → `Deploy latest commit`。
+## 目前真正即時的資料
 
-## 注意
+- fixturesService 會即時嘗試 football-data.org、ESPN public scoreboard、openfootball/static JSON。
+- newsService 會即時嘗試 ESPN、BBC Sport、Goal.com、Yahoo Sports、Google News RSS。
+- oddsService 在有 `THE_ODDS_API_KEY` 時會抓 The Odds API。
 
-目前不顯示即時比分。免費來源可能不含完整新聞、傷停、xG 或陣容資料，因此分析摘要會在資料不足時提示「部分資料為模擬估算」。這個模組適合做賽事研究頁面，不應被視為保證結果。
+## 目前限制
+
+- 2026 World Cup 賽程是否能抓到，取決於免費來源是否已開放該賽事資料。
+- ESPN public scoreboard 是公開端點，未保證長期穩定。
+- 免費資料通常不含完整傷停、xG、歷史對戰與完整新聞內文。
+- 沒有 The Odds API key 時不會有盤口，只會顯示「目前沒有可用盤口資料」。
+
+## 未來改成付費 API
+
+只需替換或擴充：
+
+- 賽程：`src/services/fixturesService.js`
+- 球隊資料：`src/services/teamStatsService.js`
+- 新聞：`src/services/newsService.js`
+- 盤口：`src/services/oddsService.js`
+
+`predictionEngine.js` 與前端合約不用重寫。

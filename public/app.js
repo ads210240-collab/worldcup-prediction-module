@@ -101,10 +101,16 @@ function formatDateTime(value) {
 
 function renderLiveStatus(data) {
   const isLive = Boolean(data.liveData?.enabled);
+  const fallbackMessage = data.dataLayer?.fallbackMessage;
+  const sources = data.dataLayer?.sourceStatuses
+    ? Object.entries(data.dataLayer.sourceStatuses)
+        .map(([key, statuses]) => `${key}: ${statuses.map((status) => `${status.source}${status.ok ? "" : " 未取得"}`).join(" / ")}`)
+        .join("；")
+    : "";
   liveStatus.classList.toggle("is-live", isLive);
   liveStatus.innerHTML = isLive
-    ? `<strong>免費資料源賽程</strong><span>${data.liveData.provider} 更新：${formatDateTime(data.liveData.fetchedAt)}，快取至：${formatDateTime(data.liveData.expiresAt)}</span>`
-    : `<strong>Fallback 賽程</strong><span>${data.liveData?.fallbackReason || "目前使用 mockWorldCupPredictions，網站不需要 API Key 也能正常顯示。"}</span>`;
+    ? `<strong>即時資料層</strong><span>${data.liveData.provider} 更新：${formatDateTime(data.liveData.fetchedAt)}，快取至：${formatDateTime(data.liveData.expiresAt)}。${sources}</span>`
+    : `<strong>Fallback 模擬資料</strong><span>${fallbackMessage || data.liveData?.fallbackReason || "目前資料來源暫時無法取得，即時資料已切換為模擬資料"}。${sources}</span>`;
 }
 
 function getRiskClass(riskLevel) {
