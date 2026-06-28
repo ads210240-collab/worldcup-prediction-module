@@ -12,7 +12,7 @@ let liveScheduleCache = null;
 
 const providerPlaceholders = {
   footballData: {
-    enabled: SOURCE_MODE === "free" || SOURCE_MODE === "football-data",
+    enabled: SOURCE_MODE !== "mock",
     envKey: "FOOTBALL_DATA_API_KEY",
     note: "Optional free football-data.org token. Used for fixtures when available; the app still works without it.",
   },
@@ -1061,8 +1061,8 @@ function createCompactVerifiedMatch({
     categoryTags,
     marketView,
     recentForm: {
-      home: "依 2026 當屆賽程與近期賽前資訊建立的 mock 分析，正式版需由即時 API 更新。",
-      away: "依 2026 當屆賽程與近期賽前資訊建立的 mock 分析，正式版需由即時 API 更新。",
+      home: "依 2026 當屆賽程與近期賽前資訊建立的 mock 分析，免費來源可用時會自動更新。",
+      away: "依 2026 當屆賽程與近期賽前資訊建立的 mock 分析，免費來源可用時會自動更新。",
     },
     goals: {
       homeFor: Math.max(4, homeGoals + 5),
@@ -1088,7 +1088,7 @@ function createCompactVerifiedMatch({
     riskLevel,
     scoreBreakdown,
     scoreBreakdownNotes: {
-      form: "依當屆賽程與近期表現方向估算，正式版需改接即時賽程/戰績 API。",
+      form: "依當屆賽程與近期表現方向估算，免費來源可用時會自動補強賽程/戰績。",
       attack: "以預測比分、近期攻擊印象與對戰強度估算。",
       defense: "以失球風險、對手攻擊壓力與比賽節奏估算。",
       odds: "目前以世界排名 / Elo 情境估算，免費來源缺資料時不使用付費賠率。",
@@ -1098,7 +1098,7 @@ function createCompactVerifiedMatch({
     },
     summary,
     keyReasons,
-    sources: ["verified:fixture-search-2026-06-27", "mock:analysis-until-live-api", "mock:market-scenario"],
+    sources: ["verified:fixture-search-2026-06-27", "mock:free-analysis-estimate", "mock:market-scenario"],
     totalScore,
   });
 }
