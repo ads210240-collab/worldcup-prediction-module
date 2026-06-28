@@ -1,5 +1,6 @@
 import { cacheTtl, withCache } from "./cacheService.js";
-import { fetchJson } from "./sourceUtils.js";
+import { buildSourceStatus, fetchJsonWithMeta } from "./sourceUtils.js";
+import { getTeamAliases, translateTeamName } from "./translationService.js";
 
 const ODDS_API_KEY = process.env.THE_ODDS_API_KEY || process.env.FOOTBALL_ODDS_API_KEY || "";
 const ODDS_SPORT_KEY = process.env.ODDS_SPORT_KEY || "soccer_fifa_world_cup";
@@ -11,8 +12,10 @@ function normalizeOddsEvent(event) {
 
   return {
     id: event.id,
-    homeTeam: event.home_team,
-    awayTeam: event.away_team,
+    homeTeam: translateTeamName(event.home_team),
+    awayTeam: translateTeamName(event.away_team),
+    originalHomeTeam: event.home_team,
+    originalAwayTeam: event.away_team,
     commenceTime: event.commence_time,
     bookmaker: firstBookmaker?.title || "",
     markets: {
@@ -25,15 +28,13 @@ function normalizeOddsEvent(event) {
 }
 
 function matchOddsToFixture(odds, fixture) {
-  const normalizedHome = fixture.homeTeam.toLowerCase();
-  const normalizedAway = fixture.awayTeam.toLowerCase();
+  const homeAliases = getTeamAliases(fixture.homeTeam).concat(getTeamAliases(fixture.originalHomeTeam));
+  const awayAliases = getTeamAliases(fixture.awayTeam).concat(getTeamAliases(fixture.originalAwayTeam));
   return odds.find((event) => {
-    const home = String(event.homeTeam || "").toLowerCase();
-    const away = String(event.awayTeam || "").toLowerCase();
-    return (
-      (home.includes(normalizedHome) || normalizedHome.includes(home)) &&
-      (away.includes(normalizedAway) || normalizedAway.includes(away))
-    );
+    const home = getTeamAliases(event.homeTeam).concat(getTeamAliases(event.originalHomeTeam));
+    const away = getTeamAliases(event.awayTeam).concat(getTeamAliases(event.originalAwayTeam));
+    return home.some((alias) => homeAliases.some((target) => alias.includes(target) || target.includes(alias))) &&
+      away.some((alias) => awayAliases.some((target) => alias.includes(target) || target.includes(alias)));
   });
 }
 
@@ -44,27 +45,34 @@ export async function getOdds(fixtures) {
         oddsByMatchId: Object.fromEntries(fixtures.map((fixture) => [fixture.id, null])),
         message: "目前沒有可用盤口資料",
         sources: [],
-        sourceStatuses: [{ source: "The Odds API", ok: false, error: "missing optional API key" }],
+        sourceStatuses: [buildSourceStatus({ source: "The Odds API", ok: false, error: "missing optional API key" })],
       };
     }
 
     try {
       const url = `https://api.the-odds-api.com/v4/sports/${ODDS_SPORT_KEY}/odds/?apiKey=${ODDS_API_KEY}&regions=us,uk,eu&markets=h2h&oddsFormat=decimal`;
-      const payload = await fetchJson(url);
-      const normalized = Array.isArray(payload) ? payload.map(normalizeOddsEvent) : [];
+      const { data, meta } = await fetchJsonWithMeta(url);
+      const normalized = Array.isArray(data) ? data.map(normalizeOddsEvent) : [];
       const oddsByMatchId = Object.fromEntries(fixtures.map((fixture) => [fixture.id, matchOddsToFixture(normalized, fixture) || null]));
       return {
         oddsByMatchId,
         message: normalized.length ? null : "目前沒有可用盤口資料",
         sources: normalized.length ? ["The Odds API"] : [],
-        sourceStatuses: [{ source: "The Odds API", ok: normalized.length > 0, count: normalized.length }],
+        sourceStatuses: [buildSourceStatus({ source: "The Odds API", ok: normalized.length > 0, count: normalized.length, meta })],
       };
     } catch (error) {
       return {
         oddsByMatchId: Object.fromEntries(fixtures.map((fixture) => [fixture.id, null])),
         message: "目前沒有可用盤口資料",
         sources: [],
-        sourceStatuses: [{ source: "The Odds API", ok: false, error: error instanceof Error ? error.message : "failed" }],
+        sourceStatuses: [
+          buildSourceStatus({
+            source: "The Odds API",
+            ok: false,
+            error: error instanceof Error ? error.message : "failed",
+            meta: { httpStatus: error.httpStatus, responseTimeMs: error.responseTimeMs },
+          }),
+        ],
       };
     }
   });

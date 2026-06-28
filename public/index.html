@@ -43,6 +43,10 @@
           <button class="ghost-button" id="refreshButton" type="button">更新賽程</button>
         </div>
         <div class="live-status" id="liveStatus"></div>
+        <details class="debug-panel" id="debugPanel">
+          <summary>Debug Panel：資料來源狀態</summary>
+          <div class="debug-grid"></div>
+        </details>
 
         <div class="loading-state" id="loadingState">載入賽事分析中...</div>
         <div class="match-grid" id="matchGrid" hidden></div>
@@ -81,6 +85,8 @@
             <strong class="confidence"></strong>
           </div>
         </div>
+        <div class="v2-metrics"></div>
+        <div class="estimation-notice" hidden>此分析部分資料使用估算。</div>
         <div class="match-actions">
           <button class="news-button" type="button">即時新聞</button>
           <button class="analysis-button" type="button">更新分析</button>

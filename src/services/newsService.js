@@ -1,5 +1,6 @@
 import { cacheTtl, withCache } from "./cacheService.js";
-import { fetchText } from "./sourceUtils.js";
+import { buildSourceStatus, fetchTextWithMeta } from "./sourceUtils.js";
+import { getTeamAliases, translateNewsText } from "./translationService.js";
 
 const NEWS_FEEDS = [
   {
@@ -46,9 +47,11 @@ function getTag(item, tag) {
 function parseRss(xml, source) {
   return [...xml.matchAll(/<item\b[\s\S]*?<\/item>/gi)].map(([item]) => ({
     source,
-    title: getTag(item, "title"),
+    title: translateNewsText(getTag(item, "title")),
+    originalTitle: getTag(item, "title"),
     link: getTag(item, "link"),
-    description: getTag(item, "description"),
+    description: translateNewsText(getTag(item, "description")),
+    originalDescription: getTag(item, "description"),
     publishedAt: getTag(item, "pubDate") || getTag(item, "updated"),
   }));
 }
@@ -61,8 +64,8 @@ function isRecent(item) {
 }
 
 function matchesFixture(item, fixture) {
-  const text = `${item.title} ${item.description}`.toLowerCase();
-  const teams = [fixture.homeTeam, fixture.awayTeam].map((team) => team.toLowerCase());
+  const text = `${item.title} ${item.description} ${item.originalTitle} ${item.originalDescription}`.toLowerCase();
+  const teams = [fixture.homeTeam, fixture.awayTeam, fixture.originalHomeTeam, fixture.originalAwayTeam].flatMap(getTeamAliases);
   return teams.some((team) => team.length > 3 && text.includes(team)) || text.includes("world cup") || text.includes("fifa");
 }
 
@@ -73,12 +76,19 @@ export async function getNews(fixtures) {
 
     for (const feed of NEWS_FEEDS) {
       try {
-        const xml = await fetchText(feed.url);
-        const parsed = parseRss(xml, feed.source).filter(isRecent);
-        sourceStatuses.push({ source: feed.source, ok: parsed.length > 0, count: parsed.length });
+        const { data, meta } = await fetchTextWithMeta(feed.url);
+        const parsed = parseRss(data, feed.source).filter(isRecent);
+        sourceStatuses.push(buildSourceStatus({ source: feed.source, ok: parsed.length > 0, count: parsed.length, meta }));
         newsItems.push(...parsed);
       } catch (error) {
-        sourceStatuses.push({ source: feed.source, ok: false, error: error instanceof Error ? error.message : "failed" });
+        sourceStatuses.push(
+          buildSourceStatus({
+            source: feed.source,
+            ok: false,
+            error: error instanceof Error ? error.message : "failed",
+            meta: { httpStatus: error.httpStatus, responseTimeMs: error.responseTimeMs },
+          }),
+        );
       }
     }
 

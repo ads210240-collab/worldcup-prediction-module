@@ -1,9 +1,9 @@
 import { cacheTtl, withCache } from "./cacheService.js";
-import { rankingSeeds } from "./mockData.js";
-
-function getRanking(teamName) {
-  return rankingSeeds[teamName] || { rank: 50, elo: 1700 };
-}
+import { buildSourceStatus } from "./sourceUtils.js";
+import { getFifaRankings } from "./fifaRankingService.js";
+import { getWorldEloRatings } from "./worldEloService.js";
+import { fetchFootballDataMatches } from "./footballDataService.js";
+import { formatTaipeiDate } from "./timeService.js";
 
 function summarizeRecentMatches(teamName, completedFixtures) {
   const matches = completedFixtures
@@ -50,25 +50,82 @@ function summarizeRecentMatches(teamName, completedFixtures) {
 
 export async function getTeamStats(fixtures) {
   return withCache("team-stats:v2", cacheTtl.teamStats, async () => {
-    const completedFixtures = fixtures.filter((fixture) => fixture.status === "FINISHED" || fixture.providerMeta?.state === "post");
+    const sourceStatuses = [];
+    let supplementalFixtures = [];
+
+    try {
+      const today = new Date();
+      const from = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
+      const { fixtures: footballDataFixtures, metas } = await fetchFootballDataMatches({
+        dateFrom: formatTaipeiDate(from),
+        dateTo: formatTaipeiDate(today),
+      });
+      supplementalFixtures = footballDataFixtures;
+      sourceStatuses.push(
+        buildSourceStatus({
+          source: "football-data.org team recent matches",
+          ok: footballDataFixtures.length > 0,
+          count: footballDataFixtures.length,
+          meta: metas[metas.length - 1] || {},
+        }),
+      );
+    } catch (error) {
+      sourceStatuses.push(
+        buildSourceStatus({
+          source: "football-data.org team recent matches",
+          ok: false,
+          error: error instanceof Error ? error.message : "failed",
+          meta: { httpStatus: error.httpStatus, responseTimeMs: error.responseTimeMs },
+        }),
+      );
+    }
+
+    const completedFixtures = [...fixtures, ...supplementalFixtures].filter((fixture) => {
+      const status = String(fixture.status || "").toUpperCase();
+      return status === "FINISHED" || status.includes("FULL_TIME") || status.includes("FINAL") || fixture.providerMeta?.state === "post";
+    });
     const teams = [...new Set(fixtures.flatMap((fixture) => [fixture.homeTeam, fixture.awayTeam]))];
+    const fifa = await getFifaRankings([...teams]);
+    const elo = await getWorldEloRatings([...teams]);
 
     const statsByTeam = Object.fromEntries(
       teams.map((teamName) => {
         const recent = summarizeRecentMatches(teamName, completedFixtures);
-        const ranking = getRanking(teamName);
+        const fifaRanking = fifa.rankingsByTeam[teamName] || { rank: null, estimated: true };
+        const eloRating = elo.eloByTeam[teamName] || { elo: null, estimated: true };
+        const estimated = recent.sampleSize < 5 || fifaRanking.estimated || eloRating.estimated;
         return [
           teamName,
           {
             teamName,
             recent,
-            ranking,
+            ranking: {
+              rank: fifaRanking.rank || 80,
+              elo: eloRating.elo || 1500,
+              fifaSource: fifaRanking.source,
+              eloSource: eloRating.source,
+              fifaEstimated: Boolean(fifaRanking.estimated),
+              eloEstimated: Boolean(eloRating.estimated),
+            },
             homeAway: {
               home: recent.homeMatches,
               away: recent.awayMatches,
             },
             source: recent.sampleSize ? "fixtures-derived" : "ranking-estimate",
-            limitations: recent.sampleSize < 5 ? ["最近五場樣本不足，部分攻防資料為估算"] : [],
+            dataQuality: {
+              estimated,
+              recentSampleSize: recent.sampleSize,
+              missingSources: [
+                recent.sampleSize < 5 ? "recent-five" : "",
+                fifaRanking.estimated ? "fifa-ranking" : "",
+                eloRating.estimated ? "world-elo" : "",
+              ].filter(Boolean),
+            },
+            limitations: [
+              recent.sampleSize < 5 ? "最近五場樣本不足，部分攻防資料為估算" : "",
+              fifaRanking.estimated ? "FIFA Ranking 使用 seed 或手動維護資料" : "",
+              eloRating.estimated ? "World Football Elo 使用 seed 或解析失敗後估算" : "",
+            ].filter(Boolean),
           },
         ];
       }),
@@ -77,16 +134,19 @@ export async function getTeamStats(fixtures) {
     return {
       statsByTeam,
       sourceStatuses: [
-        {
+        ...sourceStatuses,
+        buildSourceStatus({
           source: "fixtures-derived team form",
           ok: completedFixtures.length > 0,
           count: completedFixtures.length,
-        },
-        {
-          source: "manual FIFA ranking / Elo seed",
+        }),
+        buildSourceStatus({
+          source: "home/away split",
           ok: true,
           count: teams.length,
-        },
+        }),
+        ...fifa.sourceStatuses,
+        ...elo.sourceStatuses,
       ],
     };
   });

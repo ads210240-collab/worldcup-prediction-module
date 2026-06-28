@@ -3,6 +3,7 @@ import { getNews } from "../services/newsService.js";
 import { getOdds } from "../services/oddsService.js";
 import { buildPrediction, weights } from "../services/predictionEngine.js";
 import { getTeamStats } from "../services/teamStatsService.js";
+import { generateAiAnalysis } from "../services/aiAnalysisService.js";
 
 let lastPredictionPayload = null;
 
@@ -40,12 +41,13 @@ function buildExpectedGoals(homeStats, awayStats) {
   };
 }
 
-function buildMatchResponse(fixture, context) {
+async function buildMatchResponse(fixture, context) {
   const homeStats = context.stats.statsByTeam[fixture.homeTeam];
   const awayStats = context.stats.statsByTeam[fixture.awayTeam];
   const newsItems = context.news.newsByMatchId[fixture.id] || [];
   const odds = context.odds.oddsByMatchId[fixture.id] || null;
   const prediction = buildPrediction({ fixture, homeStats, awayStats, newsItems, odds });
+  const aiAnalysis = await generateAiAnalysis({ fixture, homeStats, awayStats, newsItems, odds, prediction });
   const sources = [
     fixture.source,
     homeStats.source,
@@ -64,11 +66,17 @@ function buildMatchResponse(fixture, context) {
     predictedScore: prediction.predictedScore,
     scorePredictions: prediction.scorePredictions,
     winProbability: prediction.winProbability,
+    overUnder: prediction.overUnder,
+    btts: prediction.btts,
+    asianHandicap: prediction.asianHandicap,
     recommendation: prediction.recommendation,
     confidence: prediction.confidence,
+    confidenceScore: prediction.confidenceScore,
     riskLevel: prediction.riskLevel,
+    riskScore: prediction.riskScore,
     totalScore: prediction.totalScore,
     scoreBreakdown: prediction.scoreBreakdown,
+    scoreBreakdownV2: prediction.scoreBreakdownV2,
     scoreBreakdownNotes: prediction.scoreBreakdownNotes,
     categoryTags: buildCategoryTags(fixture, prediction),
     marketView: buildMarketView(odds, homeStats, awayStats),
@@ -88,9 +96,12 @@ function buildMatchResponse(fixture, context) {
       away: awayStats.limitations.length ? awayStats.limitations.join("；") : "免費來源未回傳明確傷停",
     },
     expertPrediction: newsItems[0]?.title || "最近 24 小時未取得足夠相關新聞，使用資料模型產生分析。",
-    aiAnalysis: prediction.summary,
-    summary: prediction.summary,
+    aiAnalysis: aiAnalysis.summary,
+    analysisMode: aiAnalysis.analysisMode,
+    summary: aiAnalysis.summary,
     keyReasons: prediction.keyReasons,
+    hasEstimation: prediction.hasEstimation,
+    estimatedSources: prediction.estimatedSources,
     sources: [...new Set(sources.length ? sources : ["mockWorldCupPredictions"])],
   };
 }
@@ -102,7 +113,7 @@ export async function getWorldCupPredictions() {
   const news = await getNews(fixturesResult.fixtures);
   const odds = await getOdds(fixturesResult.fixtures);
   const context = { stats, news, odds };
-  const matches = fixturesResult.fixtures.map((fixture) => buildMatchResponse(fixture, context));
+  const matches = await Promise.all(fixturesResult.fixtures.map((fixture) => buildMatchResponse(fixture, context)));
   const payload = {
     generatedAt: new Date().toISOString(),
     sourceMode: fixturesResult.isFallback ? "fallback-mock" : "live-free",
@@ -118,6 +129,29 @@ export async function getWorldCupPredictions() {
         teamStats: stats.sourceStatuses,
         news: news.sourceStatuses,
         odds: odds.sourceStatuses,
+        aiAnalysis: [
+          {
+            source: process.env.OPENAI_API_KEY ? "OpenAI Responses API" : "Rule-based AI analysis",
+            ok: true,
+            count: matches.length,
+            httpStatus: null,
+            responseTimeMs: null,
+            cacheHit: false,
+            cachedAt: null,
+            expiresAt: null,
+            lastUpdatedAt: new Date().toISOString(),
+            error: null,
+          },
+        ],
+      },
+      debug: {
+        message: matches.some((match) => match.hasEstimation) ? "此分析部分資料使用估算。" : "資料來源完整度良好。",
+        sources: [
+          ...fixturesResult.sourceStatuses,
+          ...stats.sourceStatuses,
+          ...news.sourceStatuses,
+          ...odds.sourceStatuses,
+        ],
       },
       fallbackActive: fixturesResult.isFallback,
       fallbackMessage: fixturesResult.isFallback ? "目前資料來源暫時無法取得，即時資料已切換為模擬資料" : null,
@@ -125,6 +159,7 @@ export async function getWorldCupPredictions() {
         "免費新聞來源以 RSS / Google News 搜尋為主，可能不含完整授權內文。",
         "免費模式不保證完整傷停、xG 與歷史對戰。",
         "盤口需要 The Odds API 免費 key；沒有 key 時只顯示目前沒有可用盤口資料。",
+        "Prediction Engine V2 會在缺來源時降低 confidence，不用固定值補分。",
       ],
     },
     liveData: {

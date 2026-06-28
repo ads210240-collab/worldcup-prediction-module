@@ -7,6 +7,21 @@ export const cacheTtl = {
   teamStats: 6 * 60 * 60 * 1000,
 };
 
+function annotateSourceStatuses(value, cache) {
+  const next = { ...value };
+
+  if (Array.isArray(next.sourceStatuses)) {
+    next.sourceStatuses = next.sourceStatuses.map((status) => ({
+      ...status,
+      cacheHit: cache.hit,
+      cachedAt: cache.cachedAt,
+      expiresAt: cache.expiresAt,
+    }));
+  }
+
+  return next;
+}
+
 export function getCached(key) {
   const entry = memoryCache.get(key);
   if (!entry || Date.now() >= entry.expiresAtMs) {
@@ -14,16 +29,14 @@ export function getCached(key) {
     return null;
   }
 
-  return {
-    ...entry.value,
-    cache: {
-      key,
-      hit: true,
-      cachedAt: entry.cachedAt,
-      expiresAt: new Date(entry.expiresAtMs).toISOString(),
-      ttlMs: entry.ttlMs,
-    },
+  const cache = {
+    key,
+    hit: true,
+    cachedAt: entry.cachedAt,
+    expiresAt: new Date(entry.expiresAtMs).toISOString(),
+    ttlMs: entry.ttlMs,
   };
+  return annotateSourceStatuses({ ...entry.value, cache }, cache);
 }
 
 export function setCached(key, ttlMs, value) {
@@ -31,16 +44,14 @@ export function setCached(key, ttlMs, value) {
   const expiresAtMs = Date.now() + ttlMs;
   memoryCache.set(key, { value, cachedAt, expiresAtMs, ttlMs });
 
-  return {
-    ...value,
-    cache: {
-      key,
-      hit: false,
-      cachedAt,
-      expiresAt: new Date(expiresAtMs).toISOString(),
-      ttlMs,
-    },
+  const cache = {
+    key,
+    hit: false,
+    cachedAt,
+    expiresAt: new Date(expiresAtMs).toISOString(),
+    ttlMs,
   };
+  return annotateSourceStatuses({ ...value, cache }, cache);
 }
 
 export async function withCache(key, ttlMs, fetcher) {

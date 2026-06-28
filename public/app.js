@@ -22,13 +22,12 @@ const tabLabels = {
 };
 
 const scoreLabels = {
-  form: ["近期狀態", 25],
-  attack: ["攻擊火力", 20],
-  defense: ["防守穩定", 15],
-  odds: ["世界排名 / Elo", 15],
-  squad: ["陣容完整度", 10],
-  headToHead: ["歷史對戰", 5],
-  sentiment: ["新聞 / 網路情緒", 10],
+  recentFive: ["近期五場", 30],
+  bettingOdds: ["Betting Odds", 20],
+  worldElo: ["World Football Elo", 20],
+  fifaRanking: ["FIFA Ranking", 10],
+  sentiment: ["新聞情緒", 10],
+  homeAway: ["主客場", 10],
 };
 
 let predictions = [];
@@ -41,6 +40,7 @@ const activeTabHint = document.querySelector("#activeTabHint");
 const refreshButton = document.querySelector("#refreshButton");
 const template = document.querySelector("#matchCardTemplate");
 const liveStatus = document.querySelector("#liveStatus");
+const debugPanel = document.querySelector("#debugPanel");
 
 function formatDate(value) {
   const parts = new Intl.DateTimeFormat("zh-TW", {
@@ -113,6 +113,34 @@ function renderLiveStatus(data) {
     : `<strong>Fallback 模擬資料</strong><span>${fallbackMessage || data.liveData?.fallbackReason || "目前資料來源暫時無法取得，即時資料已切換為模擬資料"}。${sources}</span>`;
 }
 
+function renderDebugPanel(data) {
+  const grid = debugPanel.querySelector(".debug-grid");
+  const statuses = Object.entries(data.dataLayer?.sourceStatuses || {}).flatMap(([group, items]) =>
+    items.map((item) => ({ ...item, group })),
+  );
+
+  grid.innerHTML = statuses
+    .map(
+      (item) => `
+        <div class="debug-item ${item.ok ? "ok" : "failed"}">
+          <div>
+            <strong>${item.source}</strong>
+            <span>${item.group}</span>
+          </div>
+          <dl>
+            <div><dt>Status</dt><dd>${item.ok ? "Success" : "Failed"}</dd></div>
+            <div><dt>HTTP</dt><dd>${item.httpStatus || "-"}</dd></div>
+            <div><dt>Cache</dt><dd>${item.cacheHit ? "Hit" : "Miss"}</dd></div>
+            <div><dt>Time</dt><dd>${item.responseTimeMs == null ? "-" : `${item.responseTimeMs}ms`}</dd></div>
+            <div><dt>Updated</dt><dd>${formatDateTime(item.lastUpdatedAt || item.cachedAt)}</dd></div>
+          </dl>
+          ${item.error ? `<p>${item.error}</p>` : ""}
+        </div>
+      `,
+    )
+    .join("");
+}
+
 function getRiskClass(riskLevel) {
   if (riskLevel === "高") return "high";
   if (riskLevel === "中") return "medium";
@@ -144,7 +172,7 @@ function createProbabilityRows(match) {
 function createBreakdown(match) {
   return Object.entries(scoreLabels)
     .map(([key, [label, max]]) => {
-      const value = match.scoreBreakdown[key];
+      const value = match.scoreBreakdownV2?.[key] ?? 0;
       const width = Math.round((value / max) * 100);
       return `
         <div class="breakdown-line">
@@ -162,8 +190,20 @@ function createBreakdown(match) {
 
 function createBreakdownSummary(match) {
   return `
-    <strong>評分拆解摘要</strong>
+    <strong>評分拆解摘要・${match.analysisMode === "llm" ? "LLM" : "Rule Engine"}</strong>
     <p>${match.summary}</p>
+  `;
+}
+
+function createV2Metrics(match) {
+  return `
+    <div><span>Over 2.5</span><strong>${match.overUnder?.over25 ?? "-"}%</strong></div>
+    <div><span>Under 2.5</span><strong>${match.overUnder?.under25 ?? "-"}%</strong></div>
+    <div><span>BTTS</span><strong>${match.btts ?? "-"}%</strong></div>
+    <div><span>Asian Handicap</span><strong>${match.asianHandicap || "-"}</strong></div>
+    <div><span>Risk Score</span><strong>${match.riskScore ?? "-"}</strong></div>
+    <div><span>Confidence Score</span><strong>${match.confidenceScore ?? "-"}</strong></div>
+    <div><span>Analysis Mode</span><strong>${match.analysisMode || "rule-based"}</strong></div>
   `;
 }
 
@@ -209,7 +249,7 @@ function createDataGrid(match) {
     ["xG / xGA", `${match.homeTeam}: ${match.expectedGoals.homeXG}/${match.expectedGoals.homeXGA}<br>${match.awayTeam}: ${match.expectedGoals.awayXG}/${match.expectedGoals.awayXGA}`],
     ["傷兵或停賽", `${match.homeTeam}: ${match.injuriesSuspensions.home}<br>${match.awayTeam}: ${match.injuriesSuspensions.away}`],
     ["專家預測摘要", match.expertPrediction],
-    ["AI 綜合分析", match.aiAnalysis],
+    ["AI 綜合分析", `${match.aiAnalysis}<br>analysisMode: ${match.analysisMode || "rule-based"}`],
   ];
 
   return items
@@ -243,7 +283,10 @@ function renderMatches() {
     node.querySelector(".score-prediction-list").innerHTML = createScorePredictions(match);
     node.querySelector(".probability-bars").innerHTML = createProbabilityRows(match);
     node.querySelector(".recommendation").textContent = match.recommendation;
-    node.querySelector(".confidence").textContent = match.confidence;
+    node.querySelector(".confidence").textContent = `${match.confidence} (${match.confidenceScore})`;
+    node.querySelector(".v2-metrics").innerHTML = createV2Metrics(match);
+    const estimationNotice = node.querySelector(".estimation-notice");
+    estimationNotice.hidden = !match.hasEstimation;
     const newsPanel = node.querySelector(".news-panel");
     node.querySelector(".news-button").addEventListener("click", (event) => {
       loadMatchNews(match, newsPanel, event.currentTarget);
@@ -276,6 +319,7 @@ async function loadPredictions() {
     const data = await response.json();
     predictions = data.matches;
     renderLiveStatus(data);
+    renderDebugPanel(data);
     renderMatches();
   } catch (error) {
     loadingState.textContent = "目前無法載入 API 資料，請確認本機 server 是否啟動。";

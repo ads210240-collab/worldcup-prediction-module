@@ -1,7 +1,13 @@
+function getElapsedMs(startedAt) {
+  return Math.max(0, Math.round(performance.now() - startedAt));
+}
+
 export async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   if (!response.ok) {
-    throw new Error(`${url} failed: ${response.status}`);
+    const error = new Error(`${url} failed: ${response.status}`);
+    error.httpStatus = response.status;
+    throw error;
   }
   return response.json();
 }
@@ -9,9 +15,70 @@ export async function fetchJson(url, options = {}) {
 export async function fetchText(url, options = {}) {
   const response = await fetch(url, options);
   if (!response.ok) {
-    throw new Error(`${url} failed: ${response.status}`);
+    const error = new Error(`${url} failed: ${response.status}`);
+    error.httpStatus = response.status;
+    throw error;
   }
   return response.text();
+}
+
+export async function fetchJsonWithMeta(url, options = {}) {
+  const startedAt = performance.now();
+  const response = await fetch(url, options);
+  const responseTimeMs = getElapsedMs(startedAt);
+
+  if (!response.ok) {
+    const error = new Error(`${url} failed: ${response.status}`);
+    error.httpStatus = response.status;
+    error.responseTimeMs = responseTimeMs;
+    throw error;
+  }
+
+  return {
+    data: await response.json(),
+    meta: {
+      httpStatus: response.status,
+      responseTimeMs,
+      url,
+    },
+  };
+}
+
+export async function fetchTextWithMeta(url, options = {}) {
+  const startedAt = performance.now();
+  const response = await fetch(url, options);
+  const responseTimeMs = getElapsedMs(startedAt);
+
+  if (!response.ok) {
+    const error = new Error(`${url} failed: ${response.status}`);
+    error.httpStatus = response.status;
+    error.responseTimeMs = responseTimeMs;
+    throw error;
+  }
+
+  return {
+    data: await response.text(),
+    meta: {
+      httpStatus: response.status,
+      responseTimeMs,
+      url,
+    },
+  };
+}
+
+export function buildSourceStatus({ source, ok, count = 0, cache = null, meta = {}, error = "" }) {
+  return {
+    source,
+    ok,
+    count,
+    httpStatus: meta.httpStatus || null,
+    responseTimeMs: meta.responseTimeMs ?? null,
+    cacheHit: cache?.hit ?? false,
+    cachedAt: cache?.cachedAt || null,
+    expiresAt: cache?.expiresAt || null,
+    lastUpdatedAt: new Date().toISOString(),
+    error: error || null,
+  };
 }
 
 export function summarizeStatuses(statuses) {
