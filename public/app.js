@@ -41,6 +41,87 @@ const template = document.querySelector("#matchCardTemplate");
 const liveStatus = document.querySelector("#liveStatus");
 const debugPanel = document.querySelector("#debugPanel");
 
+const flagCodes = {
+  Argentina: "ar",
+  Australia: "au",
+  Belgium: "be",
+  Brazil: "br",
+  Cameroon: "cm",
+  Canada: "ca",
+  Chile: "cl",
+  Colombia: "co",
+  Croatia: "hr",
+  Curaçao: "cw",
+  Czechia: "cz",
+  Denmark: "dk",
+  Ecuador: "ec",
+  England: "gb-eng",
+  France: "fr",
+  Germany: "de",
+  Ghana: "gh",
+  Haiti: "ht",
+  Iran: "ir",
+  Iraq: "iq",
+  Italy: "it",
+  IvoryCoast: "ci",
+  IvoryCoastSpaced: "ci",
+  Japan: "jp",
+  Mexico: "mx",
+  Morocco: "ma",
+  Netherlands: "nl",
+  Norway: "no",
+  Portugal: "pt",
+  Scotland: "gb-sct",
+  Senegal: "sn",
+  SouthAfrica: "za",
+  SouthKorea: "kr",
+  Spain: "es",
+  Sweden: "se",
+  Tunisia: "tn",
+  Uruguay: "uy",
+  USA: "us",
+  Wales: "gb-wls",
+  阿根廷: "ar",
+  澳洲: "au",
+  比利時: "be",
+  巴西: "br",
+  喀麥隆: "cm",
+  加拿大: "ca",
+  智利: "cl",
+  哥倫比亞: "co",
+  克羅埃西亞: "hr",
+  庫拉索: "cw",
+  捷克: "cz",
+  丹麥: "dk",
+  厄瓜多: "ec",
+  英格蘭: "gb-eng",
+  法國: "fr",
+  德國: "de",
+  迦納: "gh",
+  海地: "ht",
+  伊朗: "ir",
+  伊拉克: "iq",
+  義大利: "it",
+  象牙海岸: "ci",
+  日本: "jp",
+  墨西哥: "mx",
+  摩洛哥: "ma",
+  荷蘭: "nl",
+  挪威: "no",
+  葡萄牙: "pt",
+  蘇格蘭: "gb-sct",
+  塞內加爾: "sn",
+  南非: "za",
+  南韓: "kr",
+  韓國: "kr",
+  西班牙: "es",
+  瑞典: "se",
+  突尼西亞: "tn",
+  烏拉圭: "uy",
+  美國: "us",
+  威爾斯: "gb-wls",
+};
+
 function formatDate(value) {
   const parts = new Intl.DateTimeFormat("zh-TW", {
     timeZone: "Asia/Taipei",
@@ -77,6 +158,29 @@ function createScorePredictions(match) {
       `,
     )
     .join("");
+}
+
+function createRecommendedPlay(match) {
+  const totalPlay = (match.overUnder?.over25 ?? 0) >= (match.overUnder?.under25 ?? 0) ? "大球 2.5" : "小球 2.5";
+  const scorePlay = String(match.predictedScore || "").replace("-", ":");
+  const primaryPlay = String(match.recommendation || "")
+    .split("/")
+    .map((item) => item.trim())
+    .find((item) => item && !/^BTTS$/i.test(item));
+  return [primaryPlay, `比分 ${scorePlay}`, totalPlay].filter(Boolean).join(" / ");
+}
+
+function getFlagCode(teamName) {
+  const normalized = String(teamName || "").replace(/[\s-]/g, "");
+  return flagCodes[teamName] || flagCodes[normalized] || "";
+}
+
+function renderTeamFlag(element, teamName) {
+  const flagCode = getFlagCode(teamName);
+  element.classList.toggle("has-flag", Boolean(flagCode));
+  element.innerHTML = flagCode
+    ? `<img src="https://flagcdn.com/w160/${flagCode}.png" alt="${teamName} 國旗" loading="lazy" />`
+    : `<span>${String(teamName || "隊").slice(0, 2)}</span>`;
 }
 
 function formatDateTime(value) {
@@ -148,19 +252,17 @@ function getRiskClass(riskLevel) {
 
 function createProbabilityRows(match) {
   const labels = [
-    ["主勝", match.winProbability.home],
-    ["和局", match.winProbability.draw],
-    ["客勝", match.winProbability.away],
+    ["主勝", match.winProbability.home, "home", "👑"],
+    ["和局", match.winProbability.draw, "draw", "🤝"],
+    ["客勝", match.winProbability.away, "away", "🏆"],
   ];
 
   return labels
     .map(
-      ([label, value]) => `
+      ([label, value, type, icon]) => `
         <div class="probability-line">
+          <span class="probability-icon ${type}">${icon}</span>
           <span>${label}</span>
-          <div class="bar-track" aria-hidden="true">
-            <div class="bar-fill" style="width: ${value}%"></div>
-          </div>
           <strong>${value}%</strong>
         </div>
       `,
@@ -188,16 +290,28 @@ function createBreakdown(match) {
 }
 
 function createBreakdownSummary(match) {
+  const topScore = match.scorePredictions?.[0]?.score || match.predictedScore;
+  const secondScore = match.scorePredictions?.[1]?.score;
+  const totalPlay = (match.overUnder?.over25 ?? 0) >= (match.overUnder?.under25 ?? 0) ? "大球 2.5" : "小球 2.5";
+  const handicap = match.asianHandicap && !match.asianHandicap.includes("不建議") ? match.asianHandicap : "讓球盤保守觀望";
+  const comboAdvice =
+    match.riskLevel === "高"
+      ? "不建議重串，可用小注比分方向或單場觀察。"
+      : `串關可優先搭配「${totalPlay}」與「${handicap}」。`;
+  const scoreAdvice = secondScore ? `比分可用 ${topScore} 為主劇本，${secondScore} 作為保守備案。` : `比分可用 ${topScore} 為主劇本。`;
+
   return `
-    <strong>評分拆解摘要・${match.analysisMode === "llm" ? "LLM" : "Rule Engine"}</strong>
-    <p>${match.summary}</p>
+    <strong>投注組合建議</strong>
+    <p>${comboAdvice} ${scoreAdvice} 若只想保守參考，建議以「${createRecommendedPlay(match)}」為主，不要把精確比分當成唯一買點。</p>
   `;
 }
 
 function createV2Metrics(match) {
   return `
-    <div><span>大球 2.5</span><strong>${match.overUnder?.over25 ?? "-"}%</strong></div>
-    <div><span>小球 2.5</span><strong>${match.overUnder?.under25 ?? "-"}%</strong></div>
+    <div>
+      <span>大小球 2.5</span>
+      <strong>大球 ${match.overUnder?.over25 ?? "-"}% / 小球 ${match.overUnder?.under25 ?? "-"}%</strong>
+    </div>
   `;
 }
 
@@ -239,11 +353,10 @@ function createDataGrid(match) {
   const home = match.tournamentStats.home;
   const away = match.tournamentStats.away;
   const items = [
-    ["本屆戰績", `${match.homeTeam}: ${home.formText}<br>${match.awayTeam}: ${away.formText}`],
+    ["本屆戰績", match.matchResultsView || `${match.homeTeam}: ${home.formText}<br>${match.awayTeam}: ${away.formText}`],
     ["本屆進球 / 失球", `${match.homeTeam}: ${home.goalsFor}/${home.goalsAgainst}，淨勝 ${home.goalDifference}<br>${match.awayTeam}: ${away.goalsFor}/${away.goalsAgainst}，淨勝 ${away.goalDifference}`],
     ["場均進球 / 場均失球", `${match.homeTeam}: ${home.goalsForPerGame}/${home.goalsAgainstPerGame}<br>${match.awayTeam}: ${away.goalsForPerGame}/${away.goalsAgainstPerGame}`],
     ["本屆階段 / 狀態", `${match.homeTeam}: ${home.phase}，${home.advancementStatus}<br>${match.awayTeam}: ${away.phase}，${away.advancementStatus}`],
-    ["小組排名 / 對戰強度", `${match.homeTeam}: ${home.groupRank}，${home.strengthContext}<br>${match.awayTeam}: ${away.groupRank}，${away.strengthContext}`],
     ["Elo / 世界排名", match.rankingView || match.marketView],
     ["新聞摘要", match.expertPrediction],
     ["AI 綜合分析", `${match.aiAnalysis}<br>analysisMode: ${match.analysisMode || "rule-based"}`],
@@ -274,17 +387,23 @@ function renderMatches() {
     node.querySelector(".match-date").textContent = formatDate(match.date);
     node.querySelector(".risk-pill").textContent = `風險 ${match.riskLevel}`;
     node.querySelector(".risk-pill").classList.add(getRiskClass(match.riskLevel));
-    node.querySelector(".match-title").textContent = `${match.homeTeam} vs ${match.awayTeam}`;
+    node.querySelector(".home-team").textContent = match.homeTeam;
+    node.querySelector(".away-team").textContent = match.awayTeam;
+    renderTeamFlag(node.querySelector(".home-mark"), match.homeTeam);
+    renderTeamFlag(node.querySelector(".away-mark"), match.awayTeam);
     const topWinProbability = Math.max(match.winProbability.home, match.winProbability.draw, match.winProbability.away);
     node.querySelector(".total-score strong").textContent = `${topWinProbability}%`;
     node.querySelector(".predicted-score").textContent = match.predictedScore;
     node.querySelector(".score-prediction-list").innerHTML = createScorePredictions(match);
+    node.querySelector(".over-under-card").innerHTML = createV2Metrics(match);
     node.querySelector(".probability-bars").innerHTML = createProbabilityRows(match);
-    node.querySelector(".confidence").textContent = `${match.confidence} (${match.confidenceScore})`;
-    node.querySelector(".risk-score").textContent = `${match.riskLevel} (${match.riskScore})`;
-    node.querySelector(".v2-metrics").innerHTML = createV2Metrics(match);
+    node.querySelector(".recommendation-card strong").textContent = createRecommendedPlay(match);
     const estimationNotice = node.querySelector(".estimation-notice");
     estimationNotice.hidden = !match.hasEstimation;
+    const newsPanel = node.querySelector(".news-panel");
+    node.querySelector(".news-button").addEventListener("click", (event) => {
+      loadMatchNews(match, newsPanel, event.currentTarget);
+    });
     node.querySelector(".analysis-button").addEventListener("click", async (event) => {
       event.currentTarget.disabled = true;
       event.currentTarget.textContent = "更新中";
@@ -292,8 +411,6 @@ function renderMatches() {
       event.currentTarget.textContent = "更新分析";
       event.currentTarget.disabled = false;
     });
-    node.querySelector(".summary").textContent = match.shortSummary || match.summary;
-    node.querySelector(".reason-list").innerHTML = match.keyReasons.map((reason) => `<li>${reason}</li>`).join("");
     node.querySelector(".breakdown-summary").innerHTML = createBreakdownSummary(match);
     node.querySelector(".data-grid").innerHTML = createDataGrid(match);
     matchGrid.appendChild(node);

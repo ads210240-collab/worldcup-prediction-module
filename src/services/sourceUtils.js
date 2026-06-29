@@ -2,68 +2,130 @@ function getElapsedMs(startedAt) {
   return Math.max(0, Math.round(performance.now() - startedAt));
 }
 
-export async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
-  if (!response.ok) {
-    const error = new Error(`${url} failed: ${response.status}`);
-    error.httpStatus = response.status;
-    throw error;
+function withTimeout(options = {}) {
+  const { timeoutMs = 6500, ...fetchOptions } = options;
+  if (fetchOptions.signal || !timeoutMs) {
+    return { fetchOptions, cleanup: () => {} };
   }
-  return response.json();
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return {
+    fetchOptions: {
+      ...fetchOptions,
+      signal: controller.signal,
+    },
+    cleanup: () => clearTimeout(timeout),
+  };
+}
+
+function normalizeFetchError(error, url, responseTimeMs = null) {
+  if (error?.name === "AbortError") {
+    const timeoutError = new Error(`${url} timed out`);
+    timeoutError.httpStatus = null;
+    timeoutError.responseTimeMs = responseTimeMs;
+    return timeoutError;
+  }
+  if (responseTimeMs != null && error && typeof error === "object") {
+    error.responseTimeMs = error.responseTimeMs ?? responseTimeMs;
+  }
+  return error;
+}
+
+export async function fetchJson(url, options = {}) {
+  const startedAt = performance.now();
+  const { fetchOptions, cleanup } = withTimeout(options);
+  try {
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const error = new Error(`${url} failed: ${response.status}`);
+      error.httpStatus = response.status;
+      throw error;
+    }
+    return response.json();
+  } catch (error) {
+    throw normalizeFetchError(error, url, getElapsedMs(startedAt));
+  } finally {
+    cleanup();
+  }
 }
 
 export async function fetchText(url, options = {}) {
-  const response = await fetch(url, options);
-  if (!response.ok) {
-    const error = new Error(`${url} failed: ${response.status}`);
-    error.httpStatus = response.status;
-    throw error;
+  const startedAt = performance.now();
+  const { fetchOptions, cleanup } = withTimeout(options);
+  try {
+    const response = await fetch(url, fetchOptions);
+    if (!response.ok) {
+      const error = new Error(`${url} failed: ${response.status}`);
+      error.httpStatus = response.status;
+      throw error;
+    }
+    return response.text();
+  } catch (error) {
+    throw normalizeFetchError(error, url, getElapsedMs(startedAt));
+  } finally {
+    cleanup();
   }
-  return response.text();
 }
 
 export async function fetchJsonWithMeta(url, options = {}) {
   const startedAt = performance.now();
-  const response = await fetch(url, options);
-  const responseTimeMs = getElapsedMs(startedAt);
+  const { fetchOptions, cleanup } = withTimeout(options);
 
-  if (!response.ok) {
-    const error = new Error(`${url} failed: ${response.status}`);
-    error.httpStatus = response.status;
-    error.responseTimeMs = responseTimeMs;
-    throw error;
+  try {
+    const response = await fetch(url, fetchOptions);
+    const responseTimeMs = getElapsedMs(startedAt);
+
+    if (!response.ok) {
+      const error = new Error(`${url} failed: ${response.status}`);
+      error.httpStatus = response.status;
+      error.responseTimeMs = responseTimeMs;
+      throw error;
+    }
+
+    return {
+      data: await response.json(),
+      meta: {
+        httpStatus: response.status,
+        responseTimeMs,
+        url,
+      },
+    };
+  } catch (error) {
+    throw normalizeFetchError(error, url, getElapsedMs(startedAt));
+  } finally {
+    cleanup();
   }
-
-  return {
-    data: await response.json(),
-    meta: {
-      httpStatus: response.status,
-      responseTimeMs,
-      url,
-    },
-  };
 }
 
 export async function fetchTextWithMeta(url, options = {}) {
   const startedAt = performance.now();
-  const response = await fetch(url, options);
-  const responseTimeMs = getElapsedMs(startedAt);
+  const { fetchOptions, cleanup } = withTimeout(options);
 
-  if (!response.ok) {
-    const error = new Error(`${url} failed: ${response.status}`);
-    error.httpStatus = response.status;
-    error.responseTimeMs = responseTimeMs;
-    throw error;
+  try {
+    const response = await fetch(url, fetchOptions);
+    const responseTimeMs = getElapsedMs(startedAt);
+
+    if (!response.ok) {
+      const error = new Error(`${url} failed: ${response.status}`);
+      error.httpStatus = response.status;
+      error.responseTimeMs = responseTimeMs;
+      throw error;
+    }
+
+    return {
+      data: await response.text(),
+      meta: {
+        httpStatus: response.status,
+        responseTimeMs,
+        url,
+      },
+    };
+  } catch (error) {
+    throw normalizeFetchError(error, url, getElapsedMs(startedAt));
+  } finally {
+    cleanup();
   }
-
-  return {
-    data: await response.text(),
-    meta: {
-      httpStatus: response.status,
-      responseTimeMs,
-      url,
-    },
-  };
 }
 
 export function buildSourceStatus({ source, ok, count = 0, cache = null, meta = {}, error = "" }) {

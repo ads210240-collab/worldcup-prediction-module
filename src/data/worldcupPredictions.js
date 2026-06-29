@@ -45,6 +45,17 @@ function buildExpectedGoals(homeStats, awayStats) {
   };
 }
 
+function buildMatchResultsView(fixture, homeStats, awayStats) {
+  const homeResults = homeStats.tournament.matchResults?.length
+    ? homeStats.tournament.matchResults.join("<br>")
+    : `${fixture.homeTeam}: ${homeStats.tournament.formText}`;
+  const awayResults = awayStats.tournament.matchResults?.length
+    ? awayStats.tournament.matchResults.join("<br>")
+    : `${fixture.awayTeam}: ${awayStats.tournament.formText}`;
+
+  return `${homeResults}<br>${awayResults}`;
+}
+
 function summarizeForCard(summary) {
   const text = String(summary || "").replace(/\s+/g, " ").trim();
   if (text.length <= 120) return text;
@@ -95,6 +106,7 @@ async function buildMatchResponse(fixture, context) {
       home: homeStats.tournament,
       away: awayStats.tournament,
     },
+    matchResultsView: buildMatchResultsView(fixture, homeStats, awayStats),
     recentForm: {
       home: homeStats.tournament.formText,
       away: awayStats.tournament.formText,

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>世足分析預測</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=worldcup-street-ui-20260629" />
   </head>
   <body>
     <main class="app-shell">
@@ -60,43 +60,46 @@
           <span class="risk-pill"></span>
         </div>
         <div class="match-title-row">
-          <h3 class="match-title"></h3>
-          <div class="total-score">
-            <span>AI 勝率</span>
-            <strong></strong>
+          <div class="team-battle">
+            <div class="team-side">
+              <span class="team-mark home-mark"></span>
+              <strong class="home-team"></strong>
+            </div>
+            <span class="versus">VS</span>
+            <div class="team-side">
+              <span class="team-mark away-mark"></span>
+              <strong class="away-team"></strong>
+            </div>
           </div>
+        </div>
+        <div class="total-score">
+          <span>AI 勝負機率</span>
+          <strong></strong>
         </div>
         <div class="score-row">
           <span>預測比分</span>
           <strong class="predicted-score"></strong>
         </div>
+        <div class="probability-bars"></div>
         <div class="score-predictions">
           <div class="section-label">三組預測比分，高機率排序</div>
           <div class="score-prediction-list"></div>
         </div>
-        <div class="probability-bars"></div>
-        <div class="recommendation-row">
-          <div>
-            <span>信心等級</span>
-            <strong class="confidence"></strong>
-          </div>
-          <div>
-            <span>風險等級</span>
-            <strong class="risk-score"></strong>
-          </div>
+        <div class="over-under-card"></div>
+        <div class="recommendation-card">
+          <span>推薦方向</span>
+          <strong></strong>
         </div>
         <div class="estimation-notice" hidden>此分析部分資料使用估算。</div>
         <div class="match-actions">
+          <button class="news-button" type="button">即時新聞</button>
           <button class="analysis-button" type="button">重新整理分析</button>
         </div>
+        <div class="breakdown-summary"></div>
         <div class="news-panel" hidden></div>
-        <p class="summary"></p>
         <details class="detail-panel">
           <summary>展開分析</summary>
-          <div class="breakdown-summary"></div>
           <div class="data-grid"></div>
-          <div class="v2-metrics"></div>
-          <ul class="reason-list"></ul>
         </details>
       </article>
     </template>

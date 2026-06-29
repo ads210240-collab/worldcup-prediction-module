@@ -60,6 +60,17 @@ function summarizeTournamentStats(teamName, completedFixtures) {
   }
 
   const played = matches.length;
+  const matchResults = matches
+    .filter((match) => match.score?.home != null && match.score?.away != null)
+    .slice(-4)
+    .map((match) => {
+      const isHome = match.homeTeam === teamName;
+      const opponent = isHome ? match.awayTeam : match.homeTeam;
+      const own = isHome ? match.score.home : match.score.away;
+      const against = isHome ? match.score.away : match.score.home;
+      const result = own > against ? "勝" : own === against ? "和" : "敗";
+      return `${teamName} ${own}-${against} ${opponent}（${result}）`;
+    });
   const goalDifference = goalsFor - goalsAgainst;
   const goalsForPerGame = played ? Number((goalsFor / played).toFixed(2)) : 0;
   const goalsAgainstPerGame = played ? Number((goalsAgainst / played).toFixed(2)) : 0;
@@ -90,6 +101,7 @@ function summarizeTournamentStats(teamName, completedFixtures) {
           : "本屆對戰表現接近均勢"
       : "尚無本屆對戰樣本",
     formText,
+    matchResults,
   };
 }
 

@@ -191,6 +191,7 @@ function buildGoalModel({ fixture, homeStats, awayStats, probability }) {
 }
 
 function buildPredictedScores(context) {
+  const { fixture, homeStats, awayStats } = context;
   const { homeLambda, awayLambda } = buildGoalModel(context);
   const rows = [];
 
@@ -211,8 +212,41 @@ function buildPredictedScores(context) {
     .map((item, index) => ({
       score: item.score,
       probability: item.probability,
-      note: index === 0 ? "本屆攻防與 Poisson 進球模型最高機率比分。" : "依本屆攻防、Elo 與新聞重新排序的替代比分。",
+      note: describeScoreScenario({ fixture, homeStats, awayStats, item, index }),
     }));
+}
+
+function describeScoreScenario({ fixture, homeStats, awayStats, item, index }) {
+  const [homeGoals, awayGoals] = item.score.split("-").map(Number);
+  const homeAttack = homeStats.tournament?.goalsForPerGame ?? 0;
+  const awayAttack = awayStats.tournament?.goalsForPerGame ?? 0;
+  const homeDefense = homeStats.tournament?.goalsAgainstPerGame ?? 0;
+  const awayDefense = awayStats.tournament?.goalsAgainstPerGame ?? 0;
+  const highTotal = homeGoals + awayGoals >= 3;
+
+  if (homeGoals > awayGoals) {
+    const edge = homeAttack >= awayDefense ? "本屆進攻效率能延續" : "把握定位球或轉換進攻";
+    return index === 0
+      ? `${fixture.homeTeam} 若${edge}，並把失球控制在 ${awayGoals} 球附近，這會是最順的主勝劇本。`
+      : `${fixture.awayTeam} 防線若被迫前壓，${fixture.homeTeam} 有機會靠反擊或二波進攻拉開比分。`;
+  }
+
+  if (awayGoals > homeGoals) {
+    const edge = awayAttack >= homeDefense ? "本屆攻擊狀態持續" : "前場效率提升";
+    return index === 0
+      ? `${fixture.awayTeam} 若${edge}，同時限制 ${fixture.homeTeam} 的禁區機會，客隊小勝機率最高。`
+      : `${fixture.homeTeam} 若先失球後壓上，${fixture.awayTeam} 可能留下反擊空間。`;
+  }
+
+  if (homeGoals === 0 && awayGoals === 0) {
+    return "雙方若節奏偏慢、前段時間都不冒進，低比分和局會成為主要情境。";
+  }
+
+  if (highTotal) {
+    return `兩隊本屆進攻都有一定產量，若早早出現進球，${item.score} 這種開放局面會更容易發生。`;
+  }
+
+  return `${fixture.homeTeam} 與 ${fixture.awayTeam} 若互有壓制但臨門一腳保守，和局路徑仍存在。`;
 }
 
 function buildMarketProps({ homeStats, awayStats, fixture, probability }) {
